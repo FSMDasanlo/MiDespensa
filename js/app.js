@@ -653,8 +653,7 @@ class MiDespensa {
     }
 
     handleDetectedBarcode(barcode) {
-        this.scanning = false;
-        this.stopBarcodeScanner();
+        this.scanning = false; // Detiene el bucle de requestAnimationFrame
         document.getElementById('productBarcode').value = barcode;
         document.getElementById('scanStatus').textContent = `Código detectado: ${barcode}`;
         this.fetchProductInfoByBarcode(barcode);
@@ -672,13 +671,17 @@ class MiDespensa {
                     this.populateProductFieldsFromFoodFacts(data.product, barcode);
                     document.getElementById('scanStatus').textContent = 'Datos cargados. Revisa y guarda.';
                 } else {
-                    status.textContent = 'Producto no encontrado en Open Food Facts.';
+                    status.textContent = 'Producto no encontrado en Open Food Facts. Puedes ingresarlo manualmente.';
                     alert('No se encontró el producto. Puedes ingresarlo manualmente.');
                 }
             })
-            .catch(() => {
-                status.textContent = 'Error al conectar con Open Food Facts.';
+            .catch(error => {
+                console.error('Error fetching product info:', error);
+                status.textContent = 'Error al conectar con Open Food Facts. Intenta de nuevo.';
                 alert('No se pudo conectar con Open Food Facts. Intenta de nuevo.');
+            })
+            .finally(() => {
+                this.closeScanModal(); // Cierra el modal del escáner después de procesar la respuesta (éxito o error)
             });
     }
 
