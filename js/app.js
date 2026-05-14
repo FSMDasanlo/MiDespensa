@@ -14,6 +14,7 @@ class MiDespensa {
         this.currentLocationId = null;
         this.settings = {
             expiryDays: 2,
+            userName: '',
         };
         this.currentProduct = null;
         this.barcodeStream = null;
@@ -123,6 +124,13 @@ class MiDespensa {
     }
 
     saveData(skipFirestoreSync = false) {
+        // Actualizar metadatos de la ubicación actual si hay un usuario definido
+        const location = this.getCurrentLocation();
+        if (location && this.settings.userName) {
+            location.lastUpdateBy = this.settings.userName;
+            location.lastUpdateAt = new Date().toISOString();
+        }
+
         localStorage.setItem(STORAGE_KEY, JSON.stringify(this.products));
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings));
         localStorage.setItem(LOCATIONS_KEY, JSON.stringify(this.locations));
@@ -457,7 +465,22 @@ class MiDespensa {
             this.saveData();
             this.render();
         });
+        document.getElementById('userName').addEventListener('change', (e) => {
+            this.settings.userName = e.target.value.trim();
+            this.saveData();
+            this.render(); // Añadido para actualizar el dashboard
+        });
+
         document.getElementById('exportBtn').addEventListener('click', () => this.exportData());
+
+        // Perishable checkbox toggle expiry date
+        document.getElementById('productPerishable').addEventListener('change', (e) => {
+            const expiryInput = document.getElementById('productExpiry');
+            expiryInput.disabled = !e.target.checked;
+            if (!e.target.checked) {
+                expiryInput.value = '';
+            }
+        });
         document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
         document.getElementById('importFile').addEventListener('change', (e) => this.importData(e));
         document.getElementById('clearAllBtn').addEventListener('click', () => this.clearAllData());
@@ -511,6 +534,11 @@ class MiDespensa {
             document.getElementById('productQuantity').value = '1';
             document.getElementById('deleteProductBtn').style.display = 'none';
         }
+
+        // Update expiry date enabled state
+        const perishableCheckbox = document.getElementById('productPerishable');
+        const expiryInput = document.getElementById('productExpiry');
+        expiryInput.disabled = !perishableCheckbox.checked;
         document.getElementById('scanStatus').textContent = 'Sitúa el código frente a la cámara. El escaneo se iniciará automáticamente.';
 
         modal.classList.add('active');
@@ -811,6 +839,7 @@ class MiDespensa {
     showSettingsModal() {
         document.getElementById('settingsModal').classList.add('active');
         document.getElementById('expiryDays').value = this.settings.expiryDays;
+        document.getElementById('userName').value = this.settings.userName || '';
         this.renderFirestoreStatus();
     }
 
@@ -898,6 +927,21 @@ class MiDespensa {
         const expiring = this.getExpiringProducts();
         const categories = this.getProductsByCategory();
 
+        // Banner de última visita
+        const location = this.getCurrentLocation();
+        const banner = document.getElementById('lastVisitBanner');
+        if (banner) {
+            if (location && location.lastUpdateBy) {
+                banner.style.display = 'block';
+                banner.innerHTML = `
+                    <i class="fas fa-history"></i> 
+                    Última revisión: <strong>${location.lastUpdateBy}</strong> el ${this.formatDateFull(location.lastUpdateAt)}
+                `;
+            } else {
+                banner.style.display = 'none';
+            }
+        }
+
         // Update stats
         document.getElementById('totalItems').textContent = stats.total;
         document.getElementById('expiringSoon').textContent = stats.expiring;
@@ -981,7 +1025,7 @@ class MiDespensa {
                         ${p.notes ? `<div class="product-meta" style="color: #999; font-size: 0.8rem;">📝 ${p.notes}</div>` : ''}
                     </div>
                     <button class="product-btn" onclick="event.stopPropagation(); app.consumeProduct(${p.id})">
-                        ✓
+                        <i class="fas fa-trash"></i>
                     </button>
                 </div>
             `;
