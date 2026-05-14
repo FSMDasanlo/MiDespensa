@@ -860,6 +860,15 @@ body {
     font-size: 0.9rem;
 }
 
+.firestore-status {
+    padding: 0.8rem 1rem;
+    background: #f3f4f6;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+    color: #374151;
+    font-size: 0.95rem;
+}
+
 /* Responsive */
 @media (min-width: 768px) {
     .form-row {

@@ -3,6 +3,8 @@ const STORAGE_KEY = 'midespensa_data';
 const SETTINGS_KEY = 'midespensa_settings';
 const LOCATIONS_KEY = 'midespensa_locations';
 const CURRENT_LOCATION_KEY = 'midespensa_current_location';
+const FIRESTORE_DEVICE_KEY = 'midespensa_firestore_device_id';
+const FIRESTORE_COLLECTION = 'midespensa_devices';
 
 class MiDespensa {
     constructor() {
@@ -16,11 +18,14 @@ class MiDespensa {
         this.currentProduct = null;
         this.barcodeStream = null;
         this.scanning = false;
+        this.firestoreEnabled = false;
+        this.firestoreDocRef = null;
         this.init();
     }
 
     init() {
         this.loadData();
+        this.initFirestore();
         this.initLocations();
         this.setupEventListeners();
         this.render();
@@ -34,8 +39,61 @@ class MiDespensa {
         if (!this.currentLocationId && this.locations.length > 0) {
             this.currentLocationId = this.locations[0].id;
         }
-        this.saveData();
+        this.saveData(true);
         this.updateLocationDisplay();
+    }
+
+    initFirestore() {
+        if (typeof FIREBASE_ENABLED === 'undefined' || !FIREBASE_ENABLED) {
+            this.firestoreEnabled = false;
+            return;
+        }
+
+        try {
+            firebase.initializeApp(FIREBASE_CONFIG);
+            this.db = firebase.firestore();
+            this.firestoreEnabled = true;
+            const deviceId = localStorage.getItem(FIRESTORE_DEVICE_KEY) || this.createDeviceId();
+            localStorage.setItem(FIRESTORE_DEVICE_KEY, deviceId);
+            this.firestoreDocRef = this.db.collection(FIRESTORE_COLLECTION).doc(deviceId);
+            this.loadFirestoreData();
+            this.renderFirestoreStatus();
+        } catch (error) {
+            console.warn('Firestore initialization failed:', error);
+            this.firestoreEnabled = false;
+            this.renderFirestoreStatus('Firestore no disponible');
+        }
+    }
+
+    createDeviceId() {
+        return `device_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+    }
+
+    loadFirestoreData() {
+        if (!this.firestoreEnabled || !this.firestoreDocRef) return;
+
+        this.firestoreDocRef.get()
+            .then(doc => {
+                if (doc.exists) {
+                    this.mergeFirestoreData(doc.data());
+                    this.render();
+                }
+            })
+            .catch(error => {
+                console.warn('No se pudo cargar Firestore:', error);
+            });
+    }
+
+    mergeFirestoreData(data) {
+        if (!data) return;
+
+        this.products = Array.isArray(data.products) ? data.products : this.products;
+        this.shoppingList = Array.isArray(data.shoppingList) ? data.shoppingList : this.shoppingList;
+        this.locations = Array.isArray(data.locations) ? data.locations : this.locations;
+        this.currentLocationId = data.currentLocationId || this.currentLocationId;
+        this.settings = data.settings || this.settings;
+
+        this.saveData(true);
     }
 
     // ============ DATA MANAGEMENT ============
@@ -64,12 +122,36 @@ class MiDespensa {
         }
     }
 
-    saveData() {
+    saveData(skipFirestoreSync = false) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(this.products));
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings));
         localStorage.setItem(LOCATIONS_KEY, JSON.stringify(this.locations));
         localStorage.setItem(CURRENT_LOCATION_KEY, this.currentLocationId);
         localStorage.setItem('midespensa_shopping', JSON.stringify(this.shoppingList));
+
+        if (!skipFirestoreSync && this.firestoreEnabled) {
+            this.saveFirestoreData();
+        }
+    }
+
+    saveFirestoreData() {
+        if (!this.firestoreEnabled || !this.firestoreDocRef) return;
+
+        const payload = {
+            products: this.products,
+            shoppingList: this.shoppingList,
+            locations: this.locations,
+            currentLocationId: this.currentLocationId,
+            settings: this.settings,
+            updatedAt: new Date().toISOString(),
+        };
+
+        this.firestoreDocRef.set(payload, { merge: true })
+            .then(() => this.renderFirestoreStatus())
+            .catch(error => {
+                console.warn('Error al guardar en Firestore:', error);
+                this.renderFirestoreStatus('Error al sincronizar Firestore');
+            });
     }
 
     // ============ PRODUCTS ============
@@ -729,10 +811,29 @@ class MiDespensa {
     showSettingsModal() {
         document.getElementById('settingsModal').classList.add('active');
         document.getElementById('expiryDays').value = this.settings.expiryDays;
+        this.renderFirestoreStatus();
     }
 
     closeSettingsModal() {
         document.getElementById('settingsModal').classList.remove('active');
+    }
+
+    renderFirestoreStatus(message = null) {
+        const statusElement = document.getElementById('firestoreStatus');
+        if (!statusElement) return;
+
+        if (message) {
+            statusElement.textContent = message;
+            return;
+        }
+
+        if (this.firestoreEnabled && this.firestoreDocRef) {
+            statusElement.textContent = 'Firestore activo y sincronizado';
+        } else if (typeof FIREBASE_ENABLED === 'undefined' || !FIREBASE_ENABLED) {
+            statusElement.textContent = 'Firestore no configurado';
+        } else {
+            statusElement.textContent = 'Firestore configurado, pero sin conexión';
+        }
     }
 
     exportData() {
