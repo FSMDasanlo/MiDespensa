@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiDespensa - Controla tu hogar</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1>🏠 MiDespensa</h1>
+                <div class="location-selector">
+                    <button class="location-btn" id="locationBtn">
+                        📍 <span id="currentLocation">Almenara</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                </div>
+            </div>
+            <button class="header-btn" id="settingsBtn">
+                <i class="fas fa-cog"></i>
+            </button>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="nav-tabs">
+            <button class="nav-tab active" data-tab="dashboard">
+                <i class="fas fa-home"></i>
+                <span>Inicio</span>
+            </button>
+            <button class="nav-tab" data-tab="inventory">
+                <i class="fas fa-list"></i>
+                <span>Inventario</span>
+            </button>
+            <button class="nav-tab" data-tab="shopping">
+                <i class="fas fa-shopping-bag"></i>
+                <span>Compra</span>
+            </button>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- DASHBOARD -->
+            <section id="dashboard" class="screen active">
+                <div class="dashboard-container">
+                    <div class="quick-stats">
+                        <div class="stat-card">
+                            <div class="stat-number" id="totalItems">0</div>
+                            <div class="stat-label">Productos</div>
+                        </div>
+                        <div class="stat-card alert">
+                            <div class="stat-number" id="expiringSoon">0</div>
+                            <div class="stat-label">Por vencer</div>
+                        </div>
+                        <div class="stat-card danger">
+                            <div class="stat-number" id="expired">0</div>
+                            <div class="stat-label">Vencidos</div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h2>⚠️ Por vencer pronto</h2>
+                        <div id="expiringList" class="product-list">
+                            <p class="empty-state">Todo bajo control ✓</p>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h2>📍 Por categoría</h2>
+                        <div id="categoryBreakdown" class="category-grid">
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary btn-large" id="addProductBtn">
+                        <i class="fas fa-plus"></i> Agregar producto
+                    </button>
+                </div>
+            </section>
+
+            <!-- INVENTORY -->
+            <section id="inventory" class="screen">
+                <div class="inventory-container">
+                    <div class="search-bar">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="searchInput" placeholder="Buscar productos...">
+                    </div>
+
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" data-filter="all">Todos</button>
+                        <button class="filter-btn" data-filter="perishable">Perecederos</button>
+                        <button class="filter-btn" data-filter="fridge">🧊 Frigo</button>
+                        <button class="filter-btn" data-filter="expired">⚠️ Vencidos</button>
+                    </div>
+
+                    <div id="inventoryList" class="product-list">
+                        <p class="empty-state">No hay productos. ¡Agrega uno!</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SHOPPING LIST -->
+            <section id="shopping" class="screen">
+                <div class="shopping-container">
+                    <div class="section">
+                        <h2>📝 Lista de compra</h2>
+                        <div class="input-group">
+                            <input type="text" id="newShoppingItem" placeholder="Ej: Leche, Pan...">
+                            <button class="btn btn-small" id="addShoppingBtn">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="shoppingList" class="shopping-list">
+                        <p class="empty-state">Lista vacía</p>
+                    </div>
+
+                    <button class="btn btn-secondary" id="clearShoppingBtn" style="display:none;">
+                        <i class="fas fa-trash"></i> Limpiar lista
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <!-- MODAL: Agregar/Editar Producto -->
+        <div id="productModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="modalTitle">Agregar Producto</h2>
+                    <button class="close-btn" id="closeModalBtn">&times;</button>
+                </div>
+
+                <form id="productForm" class="form">
+                    <div class="form-group">
+                        <label for="productName">Nombre *</label>
+                        <input type="text" id="productName" required>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="productBarcode">Código de barras</label>
+                            <input type="text" id="productBarcode" placeholder="Ej: 1234567890123">
+                        </div>
+                        <div class="form-group scan-actions">
+                            <label>&nbsp;</label>
+                            <div class="scan-buttons">
+                                <button type="button" class="btn btn-secondary btn-small" id="lookupBarcodeBtn">
+                                    <i class="fas fa-search"></i> Buscar
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-small" id="scanBarcodeBtn">
+                                    <i class="fas fa-camera"></i> Escanear
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="productCategory">Categoría *</label>
+                            <select id="productCategory" required>
+                                <option value="">Seleccionar...</option>
+                                <option value="dairy">🥛 Lácteos</option>
+                                <option value="beverages">🥤 Bebidas</option>
+                                <option value="produce">🥬 Frutas/Verduras</option>
+                                <option value="meat">🍗 Carnes</option>
+                                <option value="frozen">❄️ Congelados</option>
+                                <option value="pantry">🍞 Despensa</option>
+                                <option value="other">📦 Otros</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="productLocation">Ubicación *</label>
+                            <select id="productLocation" required>
+                                <option value="">Seleccionar...</option>
+                                <option value="fridge">🧊 Frigo</option>
+                                <option value="freezer">❄️ Congelador</option>
+                                <option value="pantry">🍞 Despensa</option>
+                                <option value="other">📍 Otro</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="productQuantity">Cantidad</label>
+                            <input type="number" id="productQuantity" min="1" value="1">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="productUnit">Unidad</label>
+                            <select id="productUnit">
+                                <option value="unidad">Unidad</option>
+                                <option value="kg">Kg</option>
+                                <option value="l">Litros</option>
+                                <option value="g">Gramos</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="productExpiry">Fecha de vencimiento</label>
+                        <input type="date" id="productExpiry">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="productNotes">Notas</label>
+                        <textarea id="productNotes" placeholder="Ej: Abierto, casi vacío..."></textarea>
+                    </div>
+
+                    <div class="form-group checkbox">
+                        <input type="checkbox" id="productPerishable">
+                        <label for="productPerishable">Producto perecedero</label>
+                    </div>
+
+                    <div class="modal-buttons">
+                        <button type="button" class="btn btn-secondary" id="cancelBtn">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Guardar</button>
+                    </div>
+                </form>
+
+                <button id="deleteProductBtn" class="btn btn-danger" style="display:none;">
+                    <i class="fas fa-trash"></i> Eliminar producto
+                </button>
+            </div>
+        </div>
+
+        <!-- MODAL: Escaneo de código de barras -->
+        <div id="scanModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Escanear código</h2>
+                    <button class="close-btn" id="closeScanBtn">&times;</button>
+                </div>
+                <div class="form">
+                    <p id="scanStatus">Sitúa el código frente a la cámara. El escaneo se iniciará automáticamente.</p>
+                    <div class="scan-viewer">
+                        <video id="barcodeVideo" autoplay muted playsinline></video>
+                        <canvas id="barcodeCanvas" hidden></canvas>
+                    </div>
+                    <div class="modal-buttons">
+                        <button type="button" class="btn btn-secondary" id="cancelScanBtn">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Ubicaciones -->
+        <div id="locationModal" class="modal">
+            <div class="modal-content modal-small">
+                <div class="modal-header">
+                    <h2>Mis viviendas</h2>
+                    <button class="close-btn" id="closeLocationBtn">&times;</button>
+                </div>
+
+                <div class="settings-content">
+                    <div id="locationsList" class="locations-list">
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="newLocationName">Agregar nueva vivienda:</label>
+                        <div class="input-group-small">
+                            <input type="text" id="newLocationName" placeholder="Nombre de la vivienda...">
+                            <button class="btn btn-small" id="addLocationBtn">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Configuración -->
+        <div id="settingsModal" class="modal">
+            <div class="modal-content modal-small">
+                <div class="modal-header">
+                    <h2>Configuración</h2>
+                    <button class="close-btn" id="closeSettingsBtn">&times;</button>
+                </div>
+
+                <div class="settings-content">
+                    <div class="setting-item">
+                        <label for="expiryDays">Avisar con anticipación:</label>
+                        <select id="expiryDays">
+                            <option value="1">1 día</option>
+                            <option value="2" selected>2 días</option>
+                            <option value="3">3 días</option>
+                            <option value="7">1 semana</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <button class="btn btn-secondary" id="exportBtn">
+                            <i class="fas fa-download"></i> Descargar datos
+                        </button>
+                    </div>
+
+                    <div class="setting-item">
+                        <button class="btn btn-secondary" id="importBtn">
+                            <i class="fas fa-upload"></i> Cargar datos
+                        </button>
+                        <input type="file" id="importFile" accept=".json" style="display:none;">
+                    </div>
+
+                    <div class="setting-item">
+                        <button class="btn btn-danger" id="clearAllBtn">
+                            <i class="fas fa-exclamation-triangle"></i> Borrar todo
+                        </button>
+                    </div>
+
+                    <div class="app-info">
+                        <p><strong>MiDespensa v1.0</strong></p>
+                        <p>Controla tu despensa fácilmente 🏠</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/jsqr@1.4.1/dist/jsQR.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
