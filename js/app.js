@@ -659,6 +659,30 @@ class MiDespensa {
         this.fetchProductInfoByBarcode(barcode);
     }
 
+    playBeep() {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            
+            const audioCtx = new AudioContext();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // Nota La (A5)
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + 0.2);
+        } catch (e) {
+            console.warn('No se pudo reproducir el sonido de confirmación:', e);
+        }
+    }
+
     fetchProductInfoByBarcode(barcode) {
         const status = document.getElementById('scanStatus');
         status.textContent = 'Buscando en Open Food Facts...';
@@ -669,6 +693,7 @@ class MiDespensa {
                 if (data.status === 1 && data.product) {
                     status.textContent = 'Producto encontrado. Completando datos...';
                     this.populateProductFieldsFromFoodFacts(data.product, barcode);
+                    this.playBeep();
                     document.getElementById('scanStatus').textContent = 'Datos cargados. Revisa y guarda.';
                 } else {
                     status.textContent = 'Producto no encontrado en Open Food Facts. Puedes ingresarlo manualmente.';
