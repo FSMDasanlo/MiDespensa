@@ -434,7 +434,9 @@ class MiDespensa {
                 document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 const search = document.getElementById('searchInput').value;
-                this.renderInventory(search, btn.dataset.filter);
+                this.currentInventoryFilterType = btn.dataset.filter;
+                this.currentInventoryFilterValue = null;
+                this.renderInventory(search);
             });
         });
 
@@ -1037,7 +1039,36 @@ class MiDespensa {
             `).join('');
     }
 
+    getCategoryName(categoryKey) {
+        const names = {
+            dairy: 'Lácteos',
+            beverages: 'Bebidas',
+            produce: 'Frutas/Verduras',
+            meat: 'Carnes',
+            frozen: 'Congelados',
+            pantry: 'Despensa',
+            other: 'Otros',
+        };
+        return names[categoryKey] || 'Categoría';
+    }
+
+    getInventoryFilterLabel() {
+        if (this.currentInventoryFilterType === 'category') {
+            const categoryName = this.getCategoryName(this.currentInventoryFilterValue);
+            return `Categoría: ${categoryName}`;
+        }
+        if (this.currentInventoryFilterType === 'perishable') return 'Perecederos';
+        if (this.currentInventoryFilterType === 'fridge') return 'Frigo';
+        if (this.currentInventoryFilterType === 'expired') return 'Vencidos';
+        return 'Todos';
+    }
+
     renderInventory(search = '') {
+        const inventoryStatus = document.getElementById('inventoryStatus');
+        if (inventoryStatus) {
+            inventoryStatus.textContent = `Mostrando: ${this.getInventoryFilterLabel()}`;
+        }
+
         const filtered = this.filterProducts(search, this.currentInventoryFilterType, this.currentInventoryFilterValue);
         const inventoryList = document.getElementById('inventoryList');
 

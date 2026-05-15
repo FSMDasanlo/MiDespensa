@@ -439,7 +439,15 @@ body {
     overflow-x: auto;
     padding-bottom: 0.5rem;
 }
-
+.inventory-status {
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    background: rgba(59, 130, 246, 0.08);
+    color: #1e3a8a;
+    font-weight: 600;
+    border: 1px solid rgba(59, 130, 246, 0.18);
+}
 .filter-buttons::-webkit-scrollbar {
     height: 4px;
 }
