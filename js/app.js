@@ -20,6 +20,8 @@ class MiDespensa {
         this.barcodeStream = null;
         this.scanning = false;
         this.firestoreEnabled = false;
+        this.currentInventoryFilterType = 'all'; // 'all', 'perishable', 'fridge', 'expired', 'category'
+        this.currentInventoryFilterValue = null; // category key if filterType is 'category'
         this.firestoreDocRef = null;
         this.init();
     }
@@ -309,19 +311,24 @@ class MiDespensa {
     }
 
     // ============ FILTERING ============
-    filterProducts(filter, search = '') {
+    filterProducts(search = '', filterType = 'all', filterValue = null) {
         let filtered = this.products.filter(p => p.locationId === this.currentLocationId);
 
-        // Filter by type
-        if (filter === 'perishable') {
-            filtered = filtered.filter(p => p.perishable);
-        } else if (filter === 'fridge') {
-            filtered = filtered.filter(p => p.location === 'fridge' || p.location === 'freezer');
-        } else if (filter === 'expired') {
-            filtered = filtered.filter(p => this.isExpired(p));
+        // Apply category filter first if present
+        if (filterType === 'category' && filterValue) {
+            filtered = filtered.filter(p => p.category === filterValue);
+        } else { // If no specific category filter, apply mainFilter
+            if (filterType === 'perishable') {
+                filtered = filtered.filter(p => p.perishable);
+            } else if (filterType === 'fridge') {
+                filtered = filtered.filter(p => p.location === 'fridge' || p.location === 'freezer');
+            } else if (filterType === 'expired') {
+                filtered = filtered.filter(p => this.isExpired(p));
+            }
+            // 'all' filterType doesn't need explicit filtering here
         }
 
-        // Filter by search
+        // Filter by search term
         if (search) {
             filtered = filtered.filter(p => 
                 p.name.toLowerCase().includes(search.toLowerCase())
@@ -532,6 +539,8 @@ class MiDespensa {
             form.reset();
             document.getElementById('modalTitle').textContent = 'Agregar Producto';
             document.getElementById('productQuantity').value = '1';
+            document.getElementById('productCategory').value = 'pantry';
+            document.getElementById('productLocation').value = 'pantry';
             document.getElementById('deleteProductBtn').style.display = 'none';
         }
 
@@ -816,6 +825,20 @@ class MiDespensa {
         this.renderShoppingList();
     }
 
+    // ============ CATEGORY FILTERING FROM DASHBOARD ============
+    showCategoryInventory(categoryKey) {
+        this.switchTab('inventory');
+        document.getElementById('searchInput').value = ''; // Clear search when switching to category view
+
+        // Reset main filter buttons to 'all' visually
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector('.filter-btn[data-filter="all"]').classList.add('active');
+
+        // Set the inventory filter state
+        this.currentInventoryFilterType = 'category';
+        this.currentInventoryFilterValue = categoryKey;
+        this.renderInventory(''); // Render with the new category filter
+    }
     // ============ LOCATION MODAL ============
     showLocationModal() {
         this.renderLocationsList();
@@ -977,6 +1000,7 @@ class MiDespensa {
 
         // Expiring list
         const expiringList = document.getElementById('expiringList');
+        const expiringSection = document.getElementById('expiringSection');
         if (expiring.length > 0) {
             expiringList.innerHTML = expiring.map(p => `
                 <div class="product-item" onclick="app.showProductModal(app.getProduct(${p.id}))">
@@ -995,6 +1019,9 @@ class MiDespensa {
                     </button>
                 </div>
             `).join('');
+            expiringSection.style.display = 'block';
+        } else {
+            expiringSection.style.display = 'none';
         }
 
         // Categories
@@ -1002,7 +1029,7 @@ class MiDespensa {
         categoryBreakdown.innerHTML = Object.entries(categories)
             .filter(([_, cat]) => cat.count > 0)
             .map(([key, cat]) => `
-                <div class="category-item">
+                <div class="category-item" onclick="app.showCategoryInventory('${key}')">
                     <span class="category-icon">${cat.icon}</span>
                     <div class="category-name">${cat.name}</div>
                     <div class="category-count">${cat.count} ${cat.count === 1 ? 'item' : 'items'}</div>
@@ -1010,8 +1037,8 @@ class MiDespensa {
             `).join('');
     }
 
-    renderInventory(search = '', filter = 'all') {
-        const filtered = this.filterProducts(filter, search);
+    renderInventory(search = '') {
+        const filtered = this.filterProducts(search, this.currentInventoryFilterType, this.currentInventoryFilterValue);
         const inventoryList = document.getElementById('inventoryList');
 
         if (filtered.length === 0) {
