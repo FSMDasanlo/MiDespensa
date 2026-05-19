@@ -173,7 +173,7 @@ class MiDespensa {
             name: data.name,
             category: data.category,
             location: data.location,
-            quantity: parseInt(data.quantity) || 1,
+            quantity: parseFloat(data.quantity) || 1,
             unit: data.unit,
             expiryDate: data.expiryDate || null,
             notes: data.notes,
@@ -194,7 +194,7 @@ class MiDespensa {
                 name: data.name,
                 category: data.category,
                 location: data.location,
-                quantity: parseInt(data.quantity) || 1,
+                quantity: parseFloat(data.quantity) || 1,
                 unit: data.unit,
                 expiryDate: data.expiryDate || null,
                 notes: data.notes,
@@ -223,6 +223,7 @@ class MiDespensa {
         const location = {
             id: Date.now(),
             name: name,
+            note: '',
             createdAt: new Date().toISOString(),
         };
         this.locations.push(location);
@@ -268,6 +269,86 @@ class MiDespensa {
             document.getElementById('currentLocation').textContent = location.name;
         }
     }
+
+    saveNote() {
+        const select = document.getElementById('noteLocationSelect');
+        const text = document.getElementById('noteText');
+        const location = this.getLocationById(parseInt(select.value, 10));
+        if (!location) return;
+        location.note = text.value.trim();
+        this.saveData();
+        this.renderNotes();
+        alert('Nota guardada.');
+    }
+
+    clearNote() {
+        const select = document.getElementById('noteLocationSelect');
+        const location = this.getLocationById(parseInt(select.value, 10));
+        if (!location) return;
+        location.note = '';
+        this.saveData();
+        this.renderNotes();
+    }
+
+    renderNoteEditor() {
+        const select = document.getElementById('noteLocationSelect');
+        const text = document.getElementById('noteText');
+        const location = this.getLocationById(parseInt(select.value, 10));
+        if (!location) return;
+        text.value = location.note || '';
+    }
+
+    selectNoteLocation(locationId) {
+        const select = document.getElementById('noteLocationSelect');
+        select.value = locationId;
+        this.renderNoteEditor();
+        this.renderNotes();
+    }
+
+    deleteNote(locationId) {
+        const location = this.getLocationById(locationId);
+        if (!location) return;
+        location.note = '';
+        this.saveData();
+        this.renderNotes();
+    }
+
+    renderNotes() {
+        const select = document.getElementById('noteLocationSelect');
+        const list = document.getElementById('notesList');
+
+        if (!select || !list) return;
+
+        select.innerHTML = this.locations.map(loc => `
+            <option value="${loc.id}">${loc.name}</option>
+        `).join('');
+
+        this.renderNoteEditor();
+
+        const notes = this.locations.filter(loc => loc.note && loc.note.trim());
+        if (notes.length === 0) {
+            list.innerHTML = '<p class="empty-state">No hay notas.</p>';
+            return;
+        }
+
+        list.innerHTML = notes.map(loc => `
+            <div class="product-item">
+                <div class="product-info">
+                    <div class="product-name">${loc.name}</div>
+                    <div class="product-meta">📝 ${loc.note}</div>
+                </div>
+                <div class="product-buttons">
+                    <button class="btn btn-small" onclick="app.selectNoteLocation(${loc.id});">Editar</button>
+                    <button class="btn btn-small btn-danger" onclick="app.deleteNote(${loc.id});">Borrar</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    getLocationById(id) {
+        return this.locations.find(loc => loc.id === id);
+    }
+
     getDaysUntilExpiry(expiryDate) {
         if (!expiryDate) return null;
         const expiry = new Date(expiryDate);
@@ -468,6 +549,9 @@ class MiDespensa {
         document.getElementById('newLocationName').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.addNewLocation();
         });
+        document.getElementById('saveNoteBtn').addEventListener('click', () => this.saveNote());
+        document.getElementById('clearNoteBtn').addEventListener('click', () => this.clearNote());
+        document.getElementById('noteLocationSelect').addEventListener('change', () => this.renderNoteEditor());
 
         document.getElementById('expiryDays').addEventListener('change', (e) => {
             this.settings.expiryDays = parseInt(e.target.value);
@@ -516,6 +600,15 @@ class MiDespensa {
 
         if (tab === 'shopping') {
             this.renderShoppingList();
+        }
+        if (tab === 'notes') {
+            this.renderNotes();
+        }
+        if (tab === 'inventory') {
+            this.renderInventory('');
+        }
+        if (tab === 'dashboard') {
+            this.renderDashboard();
         }
     }
 
@@ -922,6 +1015,7 @@ class MiDespensa {
         const data = {
             products: this.products,
             shoppingList: this.shoppingList,
+            locations: this.locations,
             settings: this.settings,
             exportedAt: new Date().toISOString(),
         };
@@ -947,6 +1041,7 @@ class MiDespensa {
                 if (data.products && data.shoppingList) {
                     this.products = data.products;
                     this.shoppingList = data.shoppingList;
+                    if (data.locations) this.locations = data.locations;
                     if (data.settings) this.settings = data.settings;
                     this.saveData();
                     this.render();
@@ -973,6 +1068,7 @@ class MiDespensa {
     render() {
         this.renderDashboard();
         this.renderInventory();
+        this.renderNotes();
     }
 
     renderDashboard() {
