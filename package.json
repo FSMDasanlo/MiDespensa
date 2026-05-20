@@ -1,0 +1,12 @@
+{
+  "name": "midespensa-import",
+  "version": "1.0.0",
+  "description": "Importa datos de datos.txt a Firestore para MiDespensa",
+  "main": "import-datos.js",
+  "scripts": {
+    "import": "node import-datos.js --data=./datos.txt --serviceAccount=./serviceAccountKey.json"
+  },
+  "dependencies": {
+    "firebase-admin": "^11.11.0"
+  }
+}

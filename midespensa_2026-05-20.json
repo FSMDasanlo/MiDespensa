@@ -1,0 +1,447 @@
+{
+  "products": [
+    {
+      "firebaseId": "kHolFWCf4A2m3XmOrloD",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "name": "Pan",
+      "category": "frozen",
+      "location": "freezer",
+      "quantity": 0.5,
+      "unit": "unidad",
+      "expiryDate": null,
+      "notes": "Media barra",
+      "perishable": false,
+      "barcode": "",
+      "createdAt": {
+        "seconds": 1779311727,
+        "nanoseconds": 178000000
+      }
+    },
+    {
+      "firebaseId": "sJko3QIhQvkIUPxg527u",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "location": "freezer",
+      "category": "pantry",
+      "quantity": 1,
+      "perishable": false,
+      "name": "Pan",
+      "expiryDate": null,
+      "notes": "",
+      "barcode": "",
+      "unit": "unidad",
+      "createdAt": {
+        "seconds": 1779051396,
+        "nanoseconds": 992000000
+      }
+    },
+    {
+      "firebaseId": "DxsT51OzlNDIBn3xvVK3",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "expiryDate": null,
+      "name": "Aceite",
+      "perishable": false,
+      "quantity": 3,
+      "category": "pantry",
+      "location": "pantry",
+      "unit": "unidad",
+      "createdAt": {
+        "seconds": 1779051366,
+        "nanoseconds": 676000000
+      },
+      "barcode": "",
+      "notes": ""
+    },
+    {
+      "firebaseId": "zUSQrXRpoLymnEyu7HhT",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "perishable": true,
+      "location": "freezer",
+      "category": "meat",
+      "quantity": 4,
+      "expiryDate": {
+        "seconds": 1786492800,
+        "nanoseconds": 0
+      },
+      "name": "Filetes de lomo",
+      "unit": "unidad",
+      "createdAt": {
+        "seconds": 1779051310,
+        "nanoseconds": 227000000
+      },
+      "notes": "",
+      "barcode": ""
+    },
+    {
+      "firebaseId": "lscIczC4q6qaGDpnMog6",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "unit": "unidad",
+      "createdAt": {
+        "seconds": 1779051276,
+        "nanoseconds": 641000000
+      },
+      "barcode": "",
+      "notes": "",
+      "expiryDate": {
+        "seconds": 1786579200,
+        "nanoseconds": 0
+      },
+      "name": "Corvina",
+      "perishable": true,
+      "quantity": 1,
+      "category": "pantry",
+      "location": "freezer"
+    },
+    {
+      "firebaseId": "9e7Vd3fBQkh6RztMZNPG",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "barcode": "",
+      "notes": "",
+      "createdAt": {
+        "seconds": 1779051210,
+        "nanoseconds": 848000000
+      },
+      "unit": "unidad",
+      "quantity": 1,
+      "location": "freezer",
+      "category": "frozen",
+      "perishable": true,
+      "expiryDate": {
+        "seconds": 1786492800,
+        "nanoseconds": 0
+      },
+      "name": "Lubina"
+    },
+    {
+      "firebaseId": "0itpbOB4ErRo3qOcqHQH",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "quantity": 5,
+      "location": "pantry",
+      "category": "beverages",
+      "perishable": false,
+      "name": "Fanta naranja",
+      "expiryDate": null,
+      "barcode": "",
+      "notes": "",
+      "unit": "unidad",
+      "createdAt": {
+        "seconds": 1778933100,
+        "nanoseconds": 59000000
+      }
+    },
+    {
+      "firebaseId": "dGVeXqJHE3sxmpDlr3YL",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "barcode": "",
+      "notes": "",
+      "createdAt": {
+        "seconds": 1778933048,
+        "nanoseconds": 953000000
+      },
+      "unit": "unidad",
+      "quantity": 6,
+      "category": "beverages",
+      "location": "pantry",
+      "perishable": false,
+      "expiryDate": null,
+      "name": "Cerveza "
+    },
+    {
+      "firebaseId": "jFQ9G1BUjIKAPCAMV48D",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "quantity": 3,
+      "category": "other",
+      "location": "pantry",
+      "perishable": true,
+      "expiryDate": null,
+      "name": "Atún Claro en Aceite de Oliva",
+      "barcode": "8431876069556",
+      "notes": "Marca: Carrefour",
+      "unit": "unidad",
+      "createdAt": {
+        "seconds": 1778846462,
+        "nanoseconds": 536000000
+      }
+    },
+    {
+      "firebaseId": "bWTMwxSBpa50AxvbdXTK",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "unit": "",
+      "createdAt": {
+        "seconds": 1778846413,
+        "nanoseconds": 980000000
+      },
+      "notes": "Marca: Prima",
+      "barcode": "8410118048115",
+      "perishable": false,
+      "category": "pantry",
+      "location": "pantry",
+      "quantity": 2,
+      "expiryDate": null,
+      "name": "Bolsitas mayonesa ~Original~"
+    },
+    {
+      "firebaseId": "YVeKxGWo1KYsgXCBkH3s",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "quantity": 350,
+      "location": "fridge",
+      "category": "produce",
+      "perishable": true,
+      "expiryDate": {
+        "seconds": 1798761600,
+        "nanoseconds": 0
+      },
+      "name": "Tomate frito con AOVE",
+      "barcode": "8410066128273",
+      "notes": "Marca: Orlando",
+      "unit": "g",
+      "createdAt": {
+        "seconds": 1778846275,
+        "nanoseconds": 916000000
+      }
+    },
+    {
+      "firebaseId": "q7BROzZtbRPQRneOmzD0",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "barcode": "3560070596478",
+      "notes": "Marca: Carrefour",
+      "unit": "unidad",
+      "createdAt": {
+        "seconds": 1778846123,
+        "nanoseconds": 531000000
+      },
+      "name": "Caldo cocido",
+      "expiryDate": {
+        "seconds": 1791936000,
+        "nanoseconds": 0
+      },
+      "quantity": 2,
+      "location": "pantry",
+      "category": "pantry",
+      "perishable": true
+    },
+    {
+      "firebaseId": "VJoQvwL4A3gy1QnRc1T7",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "quantity": 1,
+      "location": "pantry",
+      "category": "pantry",
+      "perishable": true,
+      "expiryDate": {
+        "seconds": 1783728000,
+        "nanoseconds": 0
+      },
+      "name": "Caldo de pescado",
+      "barcode": "8414807512192",
+      "notes": "Marca: Consum",
+      "createdAt": {
+        "seconds": 1778846048,
+        "nanoseconds": 419000000
+      },
+      "unit": "l"
+    },
+    {
+      "firebaseId": "6wpn8vu4QpRRWdQl9vWE",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "quantity": 1,
+      "location": "pantry",
+      "category": "pantry",
+      "perishable": false,
+      "expiryDate": null,
+      "name": "Judía blanca",
+      "barcode": "",
+      "notes": "Bote grande de luengo",
+      "unit": "unidad",
+      "createdAt": {
+        "seconds": 1778845339,
+        "nanoseconds": 763000000
+      }
+    },
+    {
+      "firebaseId": "y0b44kH2JZo5U1XI7Veh",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "unit": "unidad",
+      "createdAt": {
+        "seconds": 1778845298,
+        "nanoseconds": 658000000
+      },
+      "barcode": "",
+      "notes": "Poco",
+      "expiryDate": null,
+      "name": "Arroz",
+      "perishable": false,
+      "quantity": 1,
+      "location": "pantry",
+      "category": "pantry"
+    },
+    {
+      "firebaseId": "Ncq3qqVHwlZIvssqFFDm",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "location": "pantry",
+      "category": "pantry",
+      "quantity": 3,
+      "perishable": false,
+      "name": "Macarrones",
+      "expiryDate": null,
+      "notes": "Uno abierto",
+      "barcode": "",
+      "unit": "unidad",
+      "createdAt": {
+        "seconds": 1778845251,
+        "nanoseconds": 569000000
+      }
+    },
+    {
+      "firebaseId": "KZSsAfgst6CCUbZC0pbJ",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "notes": "",
+      "barcode": "",
+      "createdAt": {
+        "seconds": 1778845182,
+        "nanoseconds": 30000000
+      },
+      "unit": "unidad",
+      "expiryDate": null,
+      "name": "Lentejas",
+      "location": "pantry",
+      "category": "pantry",
+      "quantity": 2,
+      "perishable": false
+    },
+    {
+      "firebaseId": "Kp7RRsyWYgZxzRmGuBeY",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "barcode": "",
+      "notes": "",
+      "createdAt": {
+        "seconds": 1778845155,
+        "nanoseconds": 919000000
+      },
+      "unit": "unidad",
+      "quantity": 1,
+      "category": "pantry",
+      "location": "pantry",
+      "perishable": false,
+      "expiryDate": null,
+      "name": "Fideos"
+    },
+    {
+      "firebaseId": "Dj8O6O6vV6HUc3ojlAbE",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "notes": "",
+      "barcode": "",
+      "unit": "unidad",
+      "createdAt": {
+        "seconds": 1778845138,
+        "nanoseconds": 797000000
+      },
+      "expiryDate": null,
+      "name": "Garbanzos",
+      "location": "pantry",
+      "category": "pantry",
+      "quantity": 1,
+      "perishable": false
+    },
+    {
+      "firebaseId": "4u4yBzWu1NuvAl4qNpJ9",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "createdAt": {
+        "seconds": 1778793894,
+        "nanoseconds": 249000000
+      },
+      "unit": "g",
+      "barcode": "7622202214530",
+      "notes": "Marca: Fontaneda",
+      "perishable": false,
+      "quantity": 707,
+      "category": "pantry",
+      "location": "pantry",
+      "expiryDate": null,
+      "name": "Galletas La Buena Maria"
+    },
+    {
+      "firebaseId": "YvWQfu9DHio3M1vPf1lF",
+      "locationId": "R7voh6AbPw5SP5yNwU6R",
+      "notes": "",
+      "barcode": "",
+      "unit": "unidad",
+      "createdAt": {
+        "seconds": 1778788385,
+        "nanoseconds": 676000000
+      },
+      "name": "Leche",
+      "expiryDate": {
+        "seconds": 1785456000,
+        "nanoseconds": 0
+      },
+      "location": "other",
+      "category": "dairy",
+      "quantity": 1,
+      "perishable": true
+    }
+  ],
+  "shoppingList": [
+    {
+      "id": "flvmKTZSwFTF2Lz36ss3",
+      "completed": false,
+      "createdAt": {
+        "seconds": 1778855277,
+        "nanoseconds": 372000000
+      },
+      "name": "Leche"
+    },
+    {
+      "id": "uawnPTqwSviGbZ2CoAdk",
+      "completed": false,
+      "createdAt": {
+        "seconds": 1778855282,
+        "nanoseconds": 150000000
+      },
+      "name": "Pan"
+    },
+    {
+      "id": "M83e43AFy8YKctLji7Qj",
+      "completed": false,
+      "name": "Agua",
+      "createdAt": {
+        "seconds": 1778855286,
+        "nanoseconds": 335000000
+      }
+    }
+  ],
+  "locations": [
+    {
+      "id": "bOXh5VYUEiWeArx3lTwQ",
+      "createdAt": {
+        "seconds": 1778762544,
+        "nanoseconds": 504000000
+      },
+      "lastUpdateBy": "Jesus",
+      "lastUpdateAt": {
+        "seconds": 1779297051,
+        "nanoseconds": 540000000
+      },
+      "name": "Madrid",
+      "note": ""
+    },
+    {
+      "id": "R7voh6AbPw5SP5yNwU6R",
+      "lastUpdateAt": {
+        "seconds": 1779311727,
+        "nanoseconds": 487000000
+      },
+      "createdAt": {
+        "seconds": 1778762544,
+        "nanoseconds": 503000000
+      },
+      "lastUpdateBy": "Jesus",
+      "name": "Almenara",
+      "note": "Enchufa el tanque del agua caliente."
+    }
+  ],
+  "settings": {
+    "expiryDays": 2,
+    "userName": "Jesus",
+    "currentLocationId": "R7voh6AbPw5SP5yNwU6R"
+  },
+  "exportedAt": "2026-05-20T21:15:58.922Z"
+}

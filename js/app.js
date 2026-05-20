@@ -56,8 +56,8 @@ class MiDespensa {
                 }
                 this.db = firebase.firestore();
                 this.firestoreEnabled = true;
-                this.loadAllData();
                 this.renderFirestoreStatus();
+                this.loadAllData();
                 resolve();
             } catch (error) {
                 console.warn('Firestore initialization failed:', error);
@@ -116,13 +116,18 @@ class MiDespensa {
             .onSnapshot(
                 (doc) => {
                     if (doc.exists) {
-                        this.settings = { ...this.settings, ...doc.data() };
+                        const data = doc.data();
+                        this.settings = { ...this.settings, ...data };
+                        if (data.currentLocationId) {
+                            this.currentLocationId = data.currentLocationId;
+                        }
                         if (document.getElementById('expiryDays')) {
                             document.getElementById('expiryDays').value = this.settings.expiryDays;
                         }
                         if (document.getElementById('userName')) {
                             document.getElementById('userName').value = this.settings.userName || '';
                         }
+                        this.updateLocationDisplay();
                         this.render();
                     }
                 },
@@ -301,6 +306,7 @@ class MiDespensa {
             this.updateLocationDisplay();
             this.render();
             this.closeLocationModal();
+            await this.saveCurrentLocation();
         }
     }
 
@@ -326,6 +332,18 @@ class MiDespensa {
             });
         } catch (error) {
             console.warn('Error actualizando timestamp:', error);
+        }
+    }
+
+    async saveCurrentLocation() {
+        if (!this.firestoreEnabled || !this.db || !this.currentLocationId) return;
+
+        try {
+            await this.db.collection('settings').doc('global').set({
+                currentLocationId: this.currentLocationId,
+            }, { merge: true });
+        } catch (error) {
+            console.warn('Error guardando ubicación actual:', error);
         }
     }
 
@@ -427,7 +445,8 @@ class MiDespensa {
 
     getDaysUntilExpiry(expiryDate) {
         if (!expiryDate) return null;
-        const expiry = new Date(expiryDate);
+        const expiry = (expiryDate && typeof expiryDate.toDate === 'function') ? expiryDate.toDate() : new Date(expiryDate);
+        if (isNaN(expiry.getTime())) return null;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         expiry.setHours(0, 0, 0, 0);
@@ -454,7 +473,8 @@ class MiDespensa {
 
     formatDate(date) {
         if (!date) return '';
-        const d = new Date(date);
+        const d = (date && typeof date.toDate === 'function') ? date.toDate() : new Date(date);
+        if (isNaN(d.getTime())) return '';
         const day = String(d.getDate()).padStart(2, '0');
         const month = String(d.getMonth() + 1).padStart(2, '0');
         return `${day}/${month}`;
@@ -462,7 +482,8 @@ class MiDespensa {
 
     formatDateFull(date) {
         if (!date) return '';
-        const d = new Date(date);
+        const d = (date && typeof date.toDate === 'function') ? date.toDate() : new Date(date);
+        if (isNaN(d.getTime())) return 'Fecha inválida';
         const options = { weekday: 'short', month: 'short', day: 'numeric' };
         return d.toLocaleDateString('es-ES', options);
     }
@@ -1092,6 +1113,8 @@ class MiDespensa {
             console.error('Error al guardar settings:', error);
         }
     }
+
+    showSettingsModal() {
         document.getElementById('settingsModal').classList.add('active');
         document.getElementById('expiryDays').value = this.settings.expiryDays;
         document.getElementById('userName').value = this.settings.userName || '';
@@ -1147,61 +1170,88 @@ class MiDespensa {
         reader.onload = async (event) => {
             try {
                 const data = JSON.parse(event.target.result);
-                if (data.locations && data.products) {
-                    for (const location of data.locations) {
-                        try {
-                            const newLocRef = await this.db.collection('locations').add({
-                                name: location.name,
-                                note: location.note || '',
-                                createdAt: new Date(),
-                            });
-
-                            const locationProducts = data.products.filter(p => p.locationId === location.id);
-                            for (const product of locationProducts) {
-                                await newLocRef.collection('products').add({
-                                    name: product.name,
-                                    category: product.category,
-                                    location: product.location,
-                                    quantity: product.quantity,
-                                    unit: product.unit,
-                                    expiryDate: product.expiryDate,
-                                    notes: product.notes,
-                                    perishable: product.perishable,
-                                    barcode: product.barcode,
-                                    createdAt: new Date(),
-                                });
-                            }
-                        } catch (err) {
-                            console.error('Error importing location:', err);
-                        }
-                    }
-
-                    if (data.shoppingList && data.shoppingList.length > 0) {
-                        for (const item of data.shoppingList) {
-                            try {
-                                await this.db.collection('shoppingList').add({
-                                    name: item.name,
-                                    completed: item.completed,
-                                    createdAt: new Date(),
-                                });
-                            } catch (err) {
-                                console.error('Error importing shopping item:', err);
-                            }
-                        }
-                    }
-
-                    if (data.settings) {
-                        await this.db.collection('settings').doc('global').set(data.settings, { merge: true });
-                    }
-
-                    alert('Datos importados correctamente!');
-                }
+                await this.importFirestoreData(data);
+                alert('Datos importados correctamente!');
+                this.loadAllData();
             } catch (error) {
                 console.error('Error al importar datos:', error);
-                alert('Error al importar datos');
+                alert('Error al importar datos: ' + error.message);
             }
         };
         reader.readAsText(file);
+    }
+
+    async importFirestoreData(data) {
+        if (!this.firestoreEnabled || !this.db) {
+            throw new Error('No hay conexión a Firestore.');
+        }
+
+        if (!Array.isArray(data.locations) || !Array.isArray(data.products)) {
+            throw new Error('Estructura de datos inválida.');
+        }
+
+        const batch = this.db.batch();
+        const locationIdMap = new Map();
+        let firstNewLocationId = null;
+
+        // 1. Procesar Viviendas
+        for (const location of data.locations) {
+            const newLocRef = this.db.collection('locations').doc();
+            if (!firstNewLocationId) firstNewLocationId = newLocRef.id;
+            
+            locationIdMap.set(String(location.id), newLocRef.id);
+            batch.set(newLocRef, {
+                name: location.name || 'Sin nombre',
+                note: location.note || '',
+                createdAt: location.createdAt ? new Date(location.createdAt) : new Date(),
+                lastUpdateBy: location.lastUpdateBy || '',
+                lastUpdateAt: location.lastUpdateAt ? new Date(location.lastUpdateAt) : new Date(),
+            });
+        }
+
+        // 2. Procesar Productos
+        for (const product of data.products) {
+            const mappedLocationId = locationIdMap.get(String(product.locationId)) || firstNewLocationId;
+            if (!mappedLocationId) continue;
+
+            const newProdRef = this.db.collection('locations').doc(mappedLocationId).collection('products').doc();
+            batch.set(newProdRef, {
+                name: product.name || '',
+                category: product.category || '',
+                location: product.location || '',
+                quantity: product.quantity != null ? parseFloat(product.quantity) : 1,
+                unit: product.unit || '',
+                expiryDate: (product.expiryDate && product.expiryDate !== 'null') ? new Date(product.expiryDate) : null,
+                notes: product.notes || '',
+                perishable: !!product.perishable,
+                barcode: product.barcode || '',
+                createdAt: product.createdAt ? new Date(product.createdAt) : new Date(),
+            });
+        }
+
+        // 3. Procesar Lista de la Compra
+        if (Array.isArray(data.shoppingList)) {
+            for (const item of data.shoppingList) {
+                const newItemRef = this.db.collection('shoppingList').doc();
+                batch.set(newItemRef, {
+                    name: item.name || '',
+                    completed: !!item.completed,
+                    createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
+                });
+            }
+        }
+
+        // 4. Procesar Configuración Global
+        if (data.settings) {
+            const settingsPayload = {
+                expiryDays: data.settings.expiryDays != null ? data.settings.expiryDays : 2,
+                userName: data.settings.userName || '',
+                currentLocationId: locationIdMap.get(String(data.currentLocationId)) || firstNewLocationId || null,
+            };
+            batch.set(this.db.collection('settings').doc('global'), settingsPayload, { merge: true });
+        }
+
+        await batch.commit();
     }
 
     async clearAllData() {
