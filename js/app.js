@@ -1,10 +1,20 @@
-// Storage Management
-const STORAGE_KEY = 'midespensa_data';
-const SETTINGS_KEY = 'midespensa_settings';
-const LOCATIONS_KEY = 'midespensa_locations';
-const CURRENT_LOCATION_KEY = 'midespensa_current_location';
-const FIRESTORE_DEVICE_KEY = 'midespensa_firestore_device_id';
-const FIRESTORE_COLLECTION = 'midespensa_devices';
+// ============ FIRESTORE STRUCTURE ============
+// locations/{locationId}
+//   - id: string
+//   - name: string
+//   - note: string
+//   - createdAt: timestamp
+//   - lastUpdateBy: string
+//   - lastUpdateAt: timestamp
+//   products/{productId}
+//     - name, category, location, quantity, unit, expiryDate, notes, perishable, barcode, createdAt
+// shoppingList/{itemId}
+//   - name: string
+//   - completed: boolean
+//   - createdAt: timestamp
+// settings/global
+//   - expiryDays: number
+//   - userName: string
 
 class MiDespensa {
     constructor() {
@@ -20,156 +30,139 @@ class MiDespensa {
         this.barcodeStream = null;
         this.scanning = false;
         this.firestoreEnabled = false;
-        this.currentInventoryFilterType = 'all'; // 'all', 'perishable', 'fridge', 'expired', 'category'
-        this.currentInventoryFilterValue = null; // category key if filterType is 'category'
-        this.firestoreDocRef = null;
+        this.currentInventoryFilterType = 'all';
+        this.currentInventoryFilterValue = null;
+        this.db = null;
         this.init();
     }
 
-    init() {
-        this.loadData();
-        this.initFirestore();
-        this.initLocations();
+    async init() {
+        await this.initFirestore();
         this.setupEventListeners();
         this.render();
     }
 
-    initLocations() {
-        if (this.locations.length === 0) {
-            this.addLocation('Almenara');
-            this.addLocation('Madrid');
-        }
-        if (!this.currentLocationId && this.locations.length > 0) {
-            this.currentLocationId = this.locations[0].id;
-        }
-        this.saveData(true);
-        this.updateLocationDisplay();
-    }
-
     initFirestore() {
-        if (typeof FIREBASE_ENABLED === 'undefined' || !FIREBASE_ENABLED) {
-            this.firestoreEnabled = false;
-            return;
-        }
+        return new Promise((resolve) => {
+            if (typeof FIREBASE_ENABLED === 'undefined' || !FIREBASE_ENABLED) {
+                this.firestoreEnabled = false;
+                resolve();
+                return;
+            }
 
-        try {
-            firebase.initializeApp(FIREBASE_CONFIG);
-            this.db = firebase.firestore();
-            this.firestoreEnabled = true;
-            const deviceId = localStorage.getItem(FIRESTORE_DEVICE_KEY) || this.createDeviceId();
-            localStorage.setItem(FIRESTORE_DEVICE_KEY, deviceId);
-            this.firestoreDocRef = this.db.collection(FIRESTORE_COLLECTION).doc(deviceId);
-            this.loadFirestoreData();
-            this.renderFirestoreStatus();
-        } catch (error) {
-            console.warn('Firestore initialization failed:', error);
-            this.firestoreEnabled = false;
-            this.renderFirestoreStatus('Firestore no disponible');
-        }
-    }
-
-    createDeviceId() {
-        return `device_${Math.random().toString(36).slice(2)}_${Date.now()}`;
-    }
-
-    loadFirestoreData() {
-        if (!this.firestoreEnabled || !this.firestoreDocRef) return;
-
-        this.firestoreDocRef.get()
-            .then(doc => {
-                if (doc.exists) {
-                    this.mergeFirestoreData(doc.data());
-                    this.render();
+            try {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(FIREBASE_CONFIG);
                 }
-            })
-            .catch(error => {
-                console.warn('No se pudo cargar Firestore:', error);
-            });
+                this.db = firebase.firestore();
+                this.firestoreEnabled = true;
+                this.loadAllData();
+                this.renderFirestoreStatus();
+                resolve();
+            } catch (error) {
+                console.warn('Firestore initialization failed:', error);
+                this.firestoreEnabled = false;
+                this.renderFirestoreStatus('Firestore no disponible');
+                resolve();
+            }
+        });
     }
 
-    mergeFirestoreData(data) {
-        if (!data) return;
+    loadAllData() {
+        if (!this.firestoreEnabled || !this.db) return;
 
-        this.products = Array.isArray(data.products) ? data.products : this.products;
-        this.shoppingList = Array.isArray(data.shoppingList) ? data.shoppingList : this.shoppingList;
-        this.locations = Array.isArray(data.locations) ? data.locations : this.locations;
-        this.currentLocationId = data.currentLocationId || this.currentLocationId;
-        this.settings = data.settings || this.settings;
+        // Cargar locations en tiempo real
+        this.db.collection('locations')
+            .orderBy('createdAt', 'desc')
+            .onSnapshot(
+                (snapshot) => {
+                    this.locations = [];
+                    snapshot.forEach(doc => {
+                        const location = { id: doc.id, ...doc.data() };
+                        this.locations.push(location);
+                        this.loadProductsForLocation(location.id);
+                    });
 
-        this.saveData(true);
+                    if (this.locations.length > 0 && !this.currentLocationId) {
+                        this.currentLocationId = this.locations[0].id;
+                        this.updateLocationDisplay();
+                    }
+
+                    this.render();
+                },
+                (error) => {
+                    console.warn('Error cargando locations:', error);
+                }
+            );
+
+        // Cargar shopping list en tiempo real
+        this.db.collection('shoppingList')
+            .orderBy('createdAt', 'asc')
+            .onSnapshot(
+                (snapshot) => {
+                    this.shoppingList = [];
+                    snapshot.forEach(doc => {
+                        this.shoppingList.push({ id: doc.id, ...doc.data() });
+                    });
+                    this.render();
+                },
+                (error) => {
+                    console.warn('Error cargando shopping list:', error);
+                }
+            );
+
+        // Cargar settings
+        this.db.collection('settings').doc('global')
+            .onSnapshot(
+                (doc) => {
+                    if (doc.exists) {
+                        this.settings = { ...this.settings, ...doc.data() };
+                        if (document.getElementById('expiryDays')) {
+                            document.getElementById('expiryDays').value = this.settings.expiryDays;
+                        }
+                        if (document.getElementById('userName')) {
+                            document.getElementById('userName').value = this.settings.userName || '';
+                        }
+                        this.render();
+                    }
+                },
+                (error) => {
+                    console.warn('Error cargando settings:', error);
+                }
+            );
     }
 
-    // ============ DATA MANAGEMENT ============
-    loadData() {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        const settings = localStorage.getItem(SETTINGS_KEY);
-        const locations = localStorage.getItem(LOCATIONS_KEY);
-        const currentLocation = localStorage.getItem(CURRENT_LOCATION_KEY);
-        
-        if (stored) {
-            this.products = JSON.parse(stored);
-        }
-        if (settings) {
-            this.settings = JSON.parse(settings);
-        }
-        if (locations) {
-            this.locations = JSON.parse(locations);
-        }
-        if (currentLocation) {
-            this.currentLocationId = parseInt(currentLocation);
-        }
+    loadProductsForLocation(locationId) {
+        if (!this.firestoreEnabled || !this.db) return;
 
-        const storedShopping = localStorage.getItem('midespensa_shopping');
-        if (storedShopping) {
-            this.shoppingList = JSON.parse(storedShopping);
-        }
-    }
-
-    saveData(skipFirestoreSync = false) {
-        // Actualizar metadatos de la ubicación actual si hay un usuario definido
-        const location = this.getCurrentLocation();
-        if (location && this.settings.userName) {
-            location.lastUpdateBy = this.settings.userName;
-            location.lastUpdateAt = new Date().toISOString();
-        }
-
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.products));
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings));
-        localStorage.setItem(LOCATIONS_KEY, JSON.stringify(this.locations));
-        localStorage.setItem(CURRENT_LOCATION_KEY, this.currentLocationId);
-        localStorage.setItem('midespensa_shopping', JSON.stringify(this.shoppingList));
-
-        if (!skipFirestoreSync && this.firestoreEnabled) {
-            this.saveFirestoreData();
-        }
-    }
-
-    saveFirestoreData() {
-        if (!this.firestoreEnabled || !this.firestoreDocRef) return;
-
-        const payload = {
-            products: this.products,
-            shoppingList: this.shoppingList,
-            locations: this.locations,
-            currentLocationId: this.currentLocationId,
-            settings: this.settings,
-            updatedAt: new Date().toISOString(),
-        };
-
-        this.firestoreDocRef.set(payload, { merge: true })
-            .then(() => this.renderFirestoreStatus())
-            .catch(error => {
-                console.warn('Error al guardar en Firestore:', error);
-                this.renderFirestoreStatus('Error al sincronizar Firestore');
-            });
+        this.db.collection('locations').doc(locationId).collection('products')
+            .orderBy('createdAt', 'desc')
+            .onSnapshot(
+                (snapshot) => {
+                    const products = [];
+                    snapshot.forEach(doc => {
+                        products.push({
+                            firebaseId: doc.id,
+                            locationId: locationId,
+                            ...doc.data()
+                        });
+                    });
+                    
+                    this.products = this.products.filter(p => p.locationId !== locationId);
+                    this.products.push(...products);
+                    this.render();
+                },
+                (error) => {
+                    console.warn(`Error cargando productos para ${locationId}:`, error);
+                }
+            );
     }
 
     // ============ PRODUCTS ============
-    addProduct(data) {
+    async addProduct(data) {
+        if (!this.firestoreEnabled || !this.db || !this.currentLocationId) return;
+
         const product = {
-            id: Date.now(),
-            locationId: this.currentLocationId,
-            barcode: data.barcode || '',
             name: data.name,
             category: data.category,
             location: data.location,
@@ -178,81 +171,133 @@ class MiDespensa {
             expiryDate: data.expiryDate || null,
             notes: data.notes,
             perishable: data.perishable,
-            createdAt: new Date().toISOString(),
+            barcode: data.barcode || '',
+            createdAt: new Date(),
         };
-        this.products.push(product);
-        this.saveData();
-        return product;
-    }
 
-    updateProduct(id, data) {
-        const index = this.products.findIndex(p => p.id === id);
-        if (index !== -1) {
-            this.products[index] = {
-                ...this.products[index],
-                barcode: data.barcode || this.products[index].barcode || '',
-                name: data.name,
-                category: data.category,
-                location: data.location,
-                quantity: parseFloat(data.quantity) || 1,
-                unit: data.unit,
-                expiryDate: data.expiryDate || null,
-                notes: data.notes,
-                perishable: data.perishable,
-            };
-            this.saveData();
+        try {
+            await this.db.collection('locations')
+                .doc(this.currentLocationId)
+                .collection('products')
+                .add(product);
+            this.updateLocationTimestamp();
+        } catch (error) {
+            console.error('Error al añadir producto:', error);
+            alert('Error al guardar el producto');
         }
     }
 
-    deleteProduct(id) {
-        this.products = this.products.filter(p => p.id !== id);
-        this.saveData();
+    async updateProduct(firebaseId, data) {
+        if (!this.firestoreEnabled || !this.db || !this.currentLocationId) return;
+
+        const product = {
+            name: data.name,
+            category: data.category,
+            location: data.location,
+            quantity: parseFloat(data.quantity) || 1,
+            unit: data.unit,
+            expiryDate: data.expiryDate || null,
+            notes: data.notes,
+            perishable: data.perishable,
+            barcode: data.barcode || '',
+        };
+
+        try {
+            await this.db.collection('locations')
+                .doc(this.currentLocationId)
+                .collection('products')
+                .doc(firebaseId)
+                .update(product);
+            this.updateLocationTimestamp();
+        } catch (error) {
+            console.error('Error al actualizar producto:', error);
+            alert('Error al guardar el producto');
+        }
     }
 
-    getProduct(id) {
-        return this.products.find(p => p.id === id);
+    async deleteProduct(firebaseId) {
+        if (!this.firestoreEnabled || !this.db || !this.currentLocationId) return;
+
+        try {
+            await this.db.collection('locations')
+                .doc(this.currentLocationId)
+                .collection('products')
+                .doc(firebaseId)
+                .delete();
+            this.updateLocationTimestamp();
+        } catch (error) {
+            console.error('Error al eliminar producto:', error);
+            alert('Error al eliminar el producto');
+        }
     }
 
-    consumeProduct(id) {
-        this.deleteProduct(id);
+    getProduct(firebaseId) {
+        return this.products.find(p => p.firebaseId === firebaseId);
+    }
+
+    consumeProduct(firebaseId) {
+        this.deleteProduct(firebaseId);
         this.render();
     }
 
     // ============ LOCATIONS ============
-    addLocation(name) {
+    async addLocation(name) {
+        if (!this.firestoreEnabled || !this.db) return;
+
         const location = {
-            id: Date.now(),
             name: name,
             note: '',
-            createdAt: new Date().toISOString(),
+            createdAt: new Date(),
         };
-        this.locations.push(location);
-        this.saveData();
-        return location;
+
+        try {
+            const docRef = await this.db.collection('locations').add(location);
+            if (this.locations.length === 0) {
+                this.currentLocationId = docRef.id;
+                this.updateLocationDisplay();
+            }
+        } catch (error) {
+            console.error('Error al añadir vivienda:', error);
+            alert('Error al crear la vivienda');
+        }
     }
 
-    deleteLocation(id) {
-        // No permitir eliminar si es la única ubicación
+    async deleteLocation(locationId) {
         if (this.locations.length <= 1) {
             alert('Debes tener al menos una vivienda');
             return false;
         }
-        // No permitir eliminar la ubicación actual
-        if (this.currentLocationId === id) {
+        if (this.currentLocationId === locationId) {
             alert('No puedes eliminar la vivienda actual. Selecciona otra primero.');
             return false;
         }
-        // Eliminar productos asociados
-        this.products = this.products.filter(p => p.locationId !== id);
-        this.locations = this.locations.filter(l => l.id !== id);
-        this.saveData();
-        return true;
+
+        if (!this.firestoreEnabled || !this.db) return false;
+
+        try {
+            const productsSnapshot = await this.db.collection('locations')
+                .doc(locationId)
+                .collection('products')
+                .get();
+            
+            const batch = this.db.batch();
+            productsSnapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            await batch.commit();
+
+            await this.db.collection('locations').doc(locationId).delete();
+            return true;
+        } catch (error) {
+            console.error('Error al eliminar vivienda:', error);
+            alert('Error al eliminar la vivienda');
+            return false;
+        }
     }
 
-    setCurrentLocation(id) {
+    async setCurrentLocation(id) {
         if (this.locations.find(l => l.id === id)) {
             this.currentLocationId = id;
-            this.saveData();
             this.updateLocationDisplay();
             this.render();
             this.closeLocationModal();
@@ -270,30 +315,60 @@ class MiDespensa {
         }
     }
 
-    saveNote() {
-        const select = document.getElementById('noteLocationSelect');
-        const text = document.getElementById('noteText');
-        const location = this.getLocationById(parseInt(select.value, 10));
-        if (!location) return;
-        location.note = text.value.trim();
-        this.saveData();
-        this.renderNotes();
-        alert('Nota guardada.');
+    async updateLocationTimestamp() {
+        if (!this.firestoreEnabled || !this.db || !this.currentLocationId) return;
+        if (!this.settings.userName) return;
+
+        try {
+            await this.db.collection('locations').doc(this.currentLocationId).update({
+                lastUpdateBy: this.settings.userName,
+                lastUpdateAt: new Date(),
+            });
+        } catch (error) {
+            console.warn('Error actualizando timestamp:', error);
+        }
     }
 
-    clearNote() {
+    // ============ NOTES ============
+    async saveNote() {
         const select = document.getElementById('noteLocationSelect');
-        const location = this.getLocationById(parseInt(select.value, 10));
-        if (!location) return;
-        location.note = '';
-        this.saveData();
-        this.renderNotes();
+        const text = document.getElementById('noteText');
+        const locationId = select.value;
+
+        if (!this.firestoreEnabled || !this.db) return;
+
+        try {
+            await this.db.collection('locations').doc(locationId).update({
+                note: text.value.trim(),
+            });
+            this.renderNotes();
+            alert('Nota guardada.');
+        } catch (error) {
+            console.error('Error al guardar nota:', error);
+            alert('Error al guardar la nota');
+        }
+    }
+
+    async clearNote() {
+        const select = document.getElementById('noteLocationSelect');
+        const locationId = select.value;
+
+        if (!this.firestoreEnabled || !this.db) return;
+
+        try {
+            await this.db.collection('locations').doc(locationId).update({
+                note: '',
+            });
+            this.renderNotes();
+        } catch (error) {
+            console.error('Error al borrar nota:', error);
+        }
     }
 
     renderNoteEditor() {
         const select = document.getElementById('noteLocationSelect');
         const text = document.getElementById('noteText');
-        const location = this.getLocationById(parseInt(select.value, 10));
+        const location = this.locations.find(l => l.id === select.value);
         if (!location) return;
         text.value = location.note || '';
     }
@@ -305,12 +380,17 @@ class MiDespensa {
         this.renderNotes();
     }
 
-    deleteNote(locationId) {
-        const location = this.getLocationById(locationId);
-        if (!location) return;
-        location.note = '';
-        this.saveData();
-        this.renderNotes();
+    async deleteNote(locationId) {
+        if (!this.firestoreEnabled || !this.db) return;
+
+        try {
+            await this.db.collection('locations').doc(locationId).update({
+                note: '',
+            });
+            this.renderNotes();
+        } catch (error) {
+            console.error('Error al eliminar nota:', error);
+        }
     }
 
     renderNotes() {
@@ -338,15 +418,11 @@ class MiDespensa {
                     <div class="product-meta">📝 ${loc.note}</div>
                 </div>
                 <div class="product-buttons">
-                    <button class="btn btn-small" onclick="app.selectNoteLocation(${loc.id});">Editar</button>
-                    <button class="btn btn-small btn-danger" onclick="app.deleteNote(${loc.id});">Borrar</button>
+                    <button class="btn btn-small" onclick="app.selectNoteLocation('${loc.id}');">Editar</button>
+                    <button class="btn btn-small btn-danger" onclick="app.deleteNote('${loc.id}');">Borrar</button>
                 </div>
             </div>
         `).join('');
-    }
-
-    getLocationById(id) {
-        return this.locations.find(loc => loc.id === id);
     }
 
     getDaysUntilExpiry(expiryDate) {
@@ -464,34 +540,60 @@ class MiDespensa {
     }
 
     // ============ SHOPPING LIST ============
-    addShoppingItem(name) {
+    async addShoppingItem(name) {
         if (!name.trim()) return;
+        if (!this.firestoreEnabled || !this.db) return;
+
         const item = {
-            id: Date.now(),
             name: name.trim(),
             completed: false,
-            createdAt: new Date().toISOString(),
+            createdAt: new Date(),
         };
-        this.shoppingList.push(item);
-        this.saveData();
-    }
 
-    toggleShoppingItem(id) {
-        const item = this.shoppingList.find(i => i.id === id);
-        if (item) {
-            item.completed = !item.completed;
-            this.saveData();
+        try {
+            await this.db.collection('shoppingList').add(item);
+        } catch (error) {
+            console.error('Error al añadir item de compra:', error);
         }
     }
 
-    deleteShoppingItem(id) {
-        this.shoppingList = this.shoppingList.filter(i => i.id !== id);
-        this.saveData();
+    async toggleShoppingItem(firebaseId) {
+        if (!this.firestoreEnabled || !this.db) return;
+
+        const item = this.shoppingList.find(i => i.id === firebaseId);
+        if (!item) return;
+
+        try {
+            await this.db.collection('shoppingList').doc(firebaseId).update({
+                completed: !item.completed,
+            });
+        } catch (error) {
+            console.error('Error al actualizar item:', error);
+        }
     }
 
-    clearShoppingList() {
-        this.shoppingList = [];
-        this.saveData();
+    async deleteShoppingItem(firebaseId) {
+        if (!this.firestoreEnabled || !this.db) return;
+
+        try {
+            await this.db.collection('shoppingList').doc(firebaseId).delete();
+        } catch (error) {
+            console.error('Error al eliminar item:', error);
+        }
+    }
+
+    async clearShoppingList() {
+        if (!this.firestoreEnabled || !this.db) return;
+
+        try {
+            const batch = this.db.batch();
+            this.shoppingList.forEach(item => {
+                batch.delete(this.db.collection('shoppingList').doc(item.id));
+            });
+            await batch.commit();
+        } catch (error) {
+            console.error('Error al limpiar lista:', error);
+        }
     }
 
     // ============ SETUP EVENT LISTENERS ============
@@ -555,13 +657,14 @@ class MiDespensa {
 
         document.getElementById('expiryDays').addEventListener('change', (e) => {
             this.settings.expiryDays = parseInt(e.target.value);
-            this.saveData();
+            this.saveSettings();
             this.render();
         });
         document.getElementById('userName').addEventListener('change', (e) => {
             this.settings.userName = e.target.value.trim();
-            this.saveData();
-            this.render(); // Añadido para actualizar el dashboard
+            this.saveSettings();
+            this.updateLocationTimestamp();
+            this.render();
         });
 
         document.getElementById('exportBtn').addEventListener('click', () => this.exportData());
@@ -895,7 +998,7 @@ class MiDespensa {
         };
 
         if (this.currentProduct) {
-            this.updateProduct(this.currentProduct.id, data);
+            this.updateProduct(this.currentProduct.firebaseId, data);
         } else {
             this.addProduct(data);
         }
@@ -906,7 +1009,7 @@ class MiDespensa {
 
     deleteCurrentProduct() {
         if (this.currentProduct && confirm('¿Eliminar este producto?')) {
-            this.deleteProduct(this.currentProduct.id);
+            this.deleteProduct(this.currentProduct.firebaseId);
             this.closeProductModal();
             this.render();
         }
@@ -962,10 +1065,10 @@ class MiDespensa {
                 <div class="location-item-buttons">
                     ${loc.id === this.currentLocationId ? 
                         `<span class="location-item-badge">Actual</span>` : 
-                        `<button class="location-item-btn" onclick="app.setCurrentLocation(${loc.id});" title="Seleccionar">👁️</button>`
+                        `<button class="location-item-btn" onclick="app.setCurrentLocation('${loc.id}');" title="Seleccionar">👁️</button>`
                     }
                     ${this.locations.length > 1 ? 
-                        `<button class="location-item-btn delete" onclick="app.deleteLocationConfirm(${loc.id});" title="Eliminar">🗑️</button>` : 
+                        `<button class="location-item-btn delete" onclick="app.deleteLocationConfirm('${loc.id}');" title="Eliminar">🗑️</button>` : 
                         ''
                     }
                 </div>
@@ -975,14 +1078,20 @@ class MiDespensa {
 
     deleteLocationConfirm(id) {
         if (confirm('¿Eliminar esta vivienda? También se eliminarán todos sus productos.')) {
-            if (this.deleteLocation(id)) {
-                this.renderLocationsList();
-            }
+            this.deleteLocation(id);
         }
     }
 
     // ============ SETTINGS ============
-    showSettingsModal() {
+    async saveSettings() {
+        if (!this.firestoreEnabled || !this.db) return;
+
+        try {
+            await this.db.collection('settings').doc('global').set(this.settings, { merge: true });
+        } catch (error) {
+            console.error('Error al guardar settings:', error);
+        }
+    }
         document.getElementById('settingsModal').classList.add('active');
         document.getElementById('expiryDays').value = this.settings.expiryDays;
         document.getElementById('userName').value = this.settings.userName || '';
@@ -1002,12 +1111,12 @@ class MiDespensa {
             return;
         }
 
-        if (this.firestoreEnabled && this.firestoreDocRef) {
-            statusElement.textContent = 'Firestore activo y sincronizado';
+        if (this.firestoreEnabled && this.db) {
+            statusElement.textContent = '✅ Firestore activo y sincronizado en tiempo real';
         } else if (typeof FIREBASE_ENABLED === 'undefined' || !FIREBASE_ENABLED) {
-            statusElement.textContent = 'Firestore no configurado';
+            statusElement.textContent = '❌ Firestore no configurado';
         } else {
-            statusElement.textContent = 'Firestore configurado, pero sin conexión';
+            statusElement.textContent = '⚠️ Firestore configurado, pero sin conexión';
         }
     }
 
@@ -1030,37 +1139,106 @@ class MiDespensa {
         URL.revokeObjectURL(url);
     }
 
-    importData(e) {
+    async importData(e) {
         const file = e.target.files[0];
         if (!file) return;
 
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
             try {
                 const data = JSON.parse(event.target.result);
-                if (data.products && data.shoppingList) {
-                    this.products = data.products;
-                    this.shoppingList = data.shoppingList;
-                    if (data.locations) this.locations = data.locations;
-                    if (data.settings) this.settings = data.settings;
-                    this.saveData();
-                    this.render();
+                if (data.locations && data.products) {
+                    for (const location of data.locations) {
+                        try {
+                            const newLocRef = await this.db.collection('locations').add({
+                                name: location.name,
+                                note: location.note || '',
+                                createdAt: new Date(),
+                            });
+
+                            const locationProducts = data.products.filter(p => p.locationId === location.id);
+                            for (const product of locationProducts) {
+                                await newLocRef.collection('products').add({
+                                    name: product.name,
+                                    category: product.category,
+                                    location: product.location,
+                                    quantity: product.quantity,
+                                    unit: product.unit,
+                                    expiryDate: product.expiryDate,
+                                    notes: product.notes,
+                                    perishable: product.perishable,
+                                    barcode: product.barcode,
+                                    createdAt: new Date(),
+                                });
+                            }
+                        } catch (err) {
+                            console.error('Error importing location:', err);
+                        }
+                    }
+
+                    if (data.shoppingList && data.shoppingList.length > 0) {
+                        for (const item of data.shoppingList) {
+                            try {
+                                await this.db.collection('shoppingList').add({
+                                    name: item.name,
+                                    completed: item.completed,
+                                    createdAt: new Date(),
+                                });
+                            } catch (err) {
+                                console.error('Error importing shopping item:', err);
+                            }
+                        }
+                    }
+
+                    if (data.settings) {
+                        await this.db.collection('settings').doc('global').set(data.settings, { merge: true });
+                    }
+
                     alert('Datos importados correctamente!');
                 }
             } catch (error) {
+                console.error('Error al importar datos:', error);
                 alert('Error al importar datos');
             }
         };
         reader.readAsText(file);
     }
 
-    clearAllData() {
+    async clearAllData() {
         if (confirm('⚠️ ¿Borrar TODOS los datos? Esta acción no se puede deshacer.')) {
-            this.products = [];
-            this.shoppingList = [];
-            this.saveData();
-            this.render();
-            this.closeSettingsModal();
+            if (!this.firestoreEnabled || !this.db) {
+                alert('No hay conexión a Firestore');
+                return;
+            }
+
+            try {
+                const locationsSnapshot = await this.db.collection('locations').get();
+                for (const locDoc of locationsSnapshot.docs) {
+                    const productsSnapshot = await locDoc.ref.collection('products').get();
+                    const batch = this.db.batch();
+                    productsSnapshot.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                    batch.delete(locDoc.ref);
+                    await batch.commit();
+                }
+
+                const shoppingSnapshot = await this.db.collection('shoppingList').get();
+                const shoppingBatch = this.db.batch();
+                shoppingSnapshot.forEach(doc => {
+                    shoppingBatch.delete(doc.ref);
+                });
+                await shoppingBatch.commit();
+
+                await this.db.collection('settings').doc('global').delete();
+
+                this.render();
+                this.closeSettingsModal();
+                alert('Todos los datos han sido eliminados');
+            } catch (error) {
+                console.error('Error al limpiar datos:', error);
+                alert('Error al eliminar los datos');
+            }
         }
     }
 
@@ -1101,7 +1279,7 @@ class MiDespensa {
         const expiringSection = document.getElementById('expiringSection');
         if (expiring.length > 0) {
             expiringList.innerHTML = expiring.map(p => `
-                <div class="product-item" onclick="app.showProductModal(app.getProduct(${p.id}))">
+                <div class="product-item" onclick="app.showProductModal(app.getProduct('${p.firebaseId}'))">
                     <div class="product-info">
                         <div class="product-name">${p.name}</div>
                         <div class="product-meta">
@@ -1112,7 +1290,7 @@ class MiDespensa {
                             Vence: ${this.formatDateFull(p.expiryDate)}
                         </div>
                     </div>
-                    <button class="product-btn" onclick="event.stopPropagation(); app.consumeProduct(${p.id})">
+                    <button class="product-btn" onclick="event.stopPropagation(); app.consumeProduct('${p.firebaseId}')">
                         ✓
                     </button>
                 </div>
@@ -1193,7 +1371,7 @@ class MiDespensa {
             }
 
             return `
-                <div class="product-item" onclick="app.showProductModal(app.getProduct(${p.id}))">
+                <div class="product-item" onclick="app.showProductModal(app.getProduct('${p.firebaseId}'))">
                     <div class="product-info">
                         <div class="product-name">${p.name}</div>
                         <div class="product-meta">
@@ -1206,7 +1384,7 @@ class MiDespensa {
                         ${p.barcode ? `<div class="product-meta" style="color: #999; font-size: 0.8rem;">🔎 ${p.barcode}</div>` : ''}
                         ${p.notes ? `<div class="product-meta" style="color: #999; font-size: 0.8rem;">📝 ${p.notes}</div>` : ''}
                     </div>
-                    <button class="product-btn" onclick="event.stopPropagation(); app.consumeProduct(${p.id})">
+                    <button class="product-btn" onclick="event.stopPropagation(); app.consumeProduct('${p.firebaseId}')">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -1227,9 +1405,9 @@ class MiDespensa {
         clearBtn.style.display = 'block';
         list.innerHTML = this.shoppingList.map(item => `
             <div class="shopping-item">
-                <input type="checkbox" id="item-${item.id}" ${item.completed ? 'checked' : ''} onchange="app.toggleShoppingItem(${item.id}); app.renderShoppingList();">
+                <input type="checkbox" id="item-${item.id}" ${item.completed ? 'checked' : ''} onchange="app.toggleShoppingItem('${item.id}'); app.renderShoppingList();">
                 <label for="item-${item.id}">${item.name}</label>
-                <button class="delete-btn" onclick="app.deleteShoppingItem(${item.id}); app.renderShoppingList();">
+                <button class="delete-btn" onclick="app.deleteShoppingItem('${item.id}'); app.renderShoppingList();">
                     🗑️
                 </button>
             </div>
