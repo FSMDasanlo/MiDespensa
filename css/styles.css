@@ -43,7 +43,7 @@ body {
 .header {
     background: linear-gradient(145deg, #1a0f0a 0%, #462a1d 50%, var(--secondary) 100%);
     color: var(--white);
-    padding: 0 1.2rem; /* Eliminamos el padding vertical para que el logo ajuste el alto */
+    padding: 0 0.8rem; /* Reducido para ahorrar espacio en móviles */
     display: flex;
     flex-direction: row;
     justify-content: space-between;
@@ -57,40 +57,49 @@ body {
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 1.2rem;
+    gap: 0.6rem; /* Reducido de 1.2rem para ganar espacio horizontal */
+    min-width: 0; /* Permite que el contenedor se encoja si es necesario */
 }
 
 .header-logo {
-    height: 90px; /* Tamaño grande pero equilibrado para una cabecera */
+    height: 50px; /* Reducido significativamente para que quepa todo en una línea */
     width: auto;
     object-fit: contain;
     display: block; /* Elimina espacios extra en la base de la imagen */
 }
 
 .header h1 {
-    font-size: 1.5rem;
+    font-size: 1.2rem; /* Título más compacto */
     font-weight: 700;
     white-space: nowrap;
 }
 
 .location-selector {
     flex: 1;
+    min-width: 0; /* Permite que el selector se encoja para truncar texto */
 }
 
 .location-btn {
     background: rgba(255, 255, 255, 0.2);
     border: 1px solid rgba(255, 255, 255, 0.3);
     color: var(--white);
-    padding: 0.6rem 1rem;
+    padding: 0.4rem 0.6rem; /* Padding reducido */
     border-radius: 8px;
     cursor: pointer;
-    font-size: 1.1rem; /* Texto de la vivienda más grande */
+    font-size: 0.9rem; /* Fuente ajustada para móviles */
     font-weight: 600;
     display: flex;
     align-items: center;
     gap: 0.5rem;
     transition: all 0.3s;
     white-space: nowrap;
+    max-width: 100%;
+}
+
+.location-btn span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
 }
 
 .location-btn:active {
@@ -106,12 +115,13 @@ body {
     background: rgba(255, 255, 255, 0.12);
     border: none;
     color: var(--white);
-    width: 48px; /* Botón de ajustes más grande para facilitar el toque */
-    height: 48px;
+    width: 42px; /* Tamaño optimizado */
+    height: 42px;
     border-radius: 50%;
     cursor: pointer;
-    font-size: 1.4rem; /* Icono del engranaje más visible */
+    font-size: 1.2rem; /* Icono proporcional */
     transition: all 0.3s;
+    flex-shrink: 0; /* Vital: evita que el botón desaparezca al encogerse la cabecera */
 }
 
 .header-btn:active {
