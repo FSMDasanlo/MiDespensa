@@ -41,26 +41,30 @@ body {
 
 /* Header */
 .header {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    background: linear-gradient(145deg, #1a0f0a 0%, #462a1d 50%, var(--secondary) 100%);
     color: var(--white);
-    padding: 1rem 1.5rem;
+    padding: 0 1.2rem; /* Eliminamos el padding vertical para que el logo ajuste el alto */
     display: flex;
+    flex-direction: row;
     justify-content: space-between;
     align-items: center;
     box-shadow: var(--shadow);
+    position: relative;
+    min-height: auto; /* Dejamos que el contenido (el logo) dicte la altura */
 }
 
 .header-left {
     display: flex;
+    flex-direction: row;
     align-items: center;
-    gap: 1rem;
-    flex: 1;
+    gap: 1.2rem;
 }
 
 .header-logo {
-    height: 50px;
+    height: 90px; /* Tamaño grande pero equilibrado para una cabecera */
     width: auto;
-    border-radius: 8px;
+    object-fit: contain;
+    display: block; /* Elimina espacios extra en la base de la imagen */
 }
 
 .header h1 {
@@ -77,10 +81,11 @@ body {
     background: rgba(255, 255, 255, 0.2);
     border: 1px solid rgba(255, 255, 255, 0.3);
     color: var(--white);
-    padding: 0.5rem 0.8rem;
+    padding: 0.6rem 1rem;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 1.1rem; /* Texto de la vivienda más grande */
+    font-weight: 600;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -98,14 +103,14 @@ body {
 }
 
 .header-btn {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.12);
     border: none;
     color: var(--white);
-    width: 40px;
-    height: 40px;
+    width: 48px; /* Botón de ajustes más grande para facilitar el toque */
+    height: 48px;
     border-radius: 50%;
     cursor: pointer;
-    font-size: 1.2rem;
+    font-size: 1.4rem; /* Icono del engranaje más visible */
     transition: all 0.3s;
 }
 
