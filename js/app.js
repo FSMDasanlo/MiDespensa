@@ -12,6 +12,7 @@
 //   - name: string
 //   - completed: boolean
 //   - createdAt: timestamp
+// locations/{locationId}/notes/{noteId}
 // settings/global
 //   - expiryDays: number
 //   - userName: string
@@ -21,6 +22,7 @@ class MiDespensa {
         this.products = [];
         this.shoppingList = [];
         this.locations = [];
+        this.locationNotes = []; // Array to hold notes for the current location
         this.currentLocationId = null;
         this.settings = {
             expiryDays: 2,
@@ -29,6 +31,7 @@ class MiDespensa {
         this.currentProduct = null;
         this.barcodeStream = null;
         this.scanning = false;
+        this.notesUnsubscribe = null; // To store the unsubscribe function for notes listener
         this.firestoreEnabled = false;
         this.currentInventoryFilterType = 'all';
         this.currentInventoryFilterValue = null;
@@ -86,6 +89,7 @@ class MiDespensa {
                     if (this.locations.length > 0 && !this.currentLocationId) {
                         this.currentLocationId = this.locations[0].id;
                         this.updateLocationDisplay();
+                        this.setupNotesListener(this.currentLocationId); // Setup notes listener for initial location
                     }
 
                     this.render();
@@ -121,6 +125,7 @@ class MiDespensa {
                         if (data.currentLocationId) {
                             this.currentLocationId = data.currentLocationId;
                         }
+                        this.setupNotesListener(this.currentLocationId); // Ensure notes listener is for the correct location
                         if (document.getElementById('expiryDays')) {
                             document.getElementById('expiryDays').value = this.settings.expiryDays;
                         }
@@ -161,6 +166,37 @@ class MiDespensa {
                     console.warn(`Error cargando productos para ${locationId}:`, error);
                 }
             );
+    }
+
+    setupNotesListener(locationId) {
+        if (this.notesUnsubscribe) {
+            this.notesUnsubscribe(); // Unsubscribe from previous listener
+        }
+        if (!this.firestoreEnabled || !this.db || !locationId) {
+            this.locationNotes = []; // Clear notes if no valid location
+            this.render();
+            return;
+        }
+
+        this.notesUnsubscribe = this.db.collection('locations').doc(locationId).collection('notes')
+            .orderBy('createdAt', 'desc')
+            .onSnapshot(
+                (snapshot) => {
+                    this.locationNotes = []; // Clear existing notes
+                    snapshot.forEach(doc => {
+                        this.locationNotes.push({
+                            id: doc.id,
+                            locationId: locationId,
+                            ...doc.data()
+                        });
+                    });
+                    this.render(); // Re-render to show updated notes
+                },
+                (error) => {
+                    console.warn(`Error cargando notas para ${locationId}:`, error);
+                    this.locationNotes = []; // Clear notes on error
+                    this.render();
+                });
     }
 
     // ============ PRODUCTS ============
@@ -304,6 +340,7 @@ class MiDespensa {
         if (this.locations.find(l => l.id === id)) {
             this.currentLocationId = id;
             this.updateLocationDisplay();
+            this.setupNotesListener(this.currentLocationId); // Update notes listener
             this.render();
             this.closeLocationModal();
             await this.saveCurrentLocation();
@@ -349,95 +386,104 @@ class MiDespensa {
 
     // ============ NOTES ============
     async saveNote() {
-        const select = document.getElementById('noteLocationSelect');
-        const text = document.getElementById('noteText');
-        const locationId = select.value;
+        const textInput = document.getElementById('noteText');
+        const noteContent = textInput.value.trim();
 
-        if (!this.firestoreEnabled || !this.db) return;
+        if (!noteContent) {
+            alert('La nota no puede estar vacía.');
+            return;
+        }
+        if (!this.firestoreEnabled || !this.db || !this.currentLocationId) return;
+
+        const newNote = {
+            text: noteContent,
+            createdAt: new Date(),
+            createdBy: this.settings.userName || 'Anónimo',
+        };
 
         try {
-            await this.db.collection('locations').doc(locationId).update({
-                note: text.value.trim(),
-            });
-            this.renderNotes();
-            alert('Nota guardada.');
+            await this.db.collection('locations').doc(this.currentLocationId).collection('notes').add(newNote);
+            textInput.value = ''; // Clear the input after saving
+            this.updateLocationTimestamp();
+            // render() is called by the onSnapshot listener for notes
         } catch (error) {
             console.error('Error al guardar nota:', error);
             alert('Error al guardar la nota');
         }
     }
 
+    // This now clears the input field for a new note
     async clearNote() {
-        const select = document.getElementById('noteLocationSelect');
-        const locationId = select.value;
+        const textInput = document.getElementById('noteText');
+        if (textInput) {
+            textInput.value = '';
+        }
+        // No need to interact with Firestore here, as it's just clearing the input
+    }
 
-        if (!this.firestoreEnabled || !this.db) return;
+    // New function to delete an individual note
+    async deleteIndividualNote(noteId) {
+        if (!this.firestoreEnabled || !this.db || !this.currentLocationId) return;
+        if (!confirm('¿Estás seguro de que quieres borrar esta nota?')) return;
 
         try {
-            await this.db.collection('locations').doc(locationId).update({
-                note: '',
-            });
-            this.renderNotes();
+            await this.db.collection('locations').doc(this.currentLocationId).collection('notes').doc(noteId).delete();
+            this.updateLocationTimestamp();
+            // render() is called by the onSnapshot listener for notes
         } catch (error) {
-            console.error('Error al borrar nota:', error);
+            console.error('Error al borrar nota individual:', error);
+            alert('Error al borrar la nota.');
         }
     }
 
+    // This now just ensures the input field is clear for a new note
     renderNoteEditor() {
-        const select = document.getElementById('noteLocationSelect');
         const text = document.getElementById('noteText');
-        const location = this.locations.find(l => l.id === select.value);
-        if (!location) return;
-        text.value = location.note || '';
-    }
-
-    selectNoteLocation(locationId) {
-        const select = document.getElementById('noteLocationSelect');
-        select.value = locationId;
-        this.renderNoteEditor();
-        this.renderNotes();
-    }
-
-    async deleteNote(locationId) {
-        if (!this.firestoreEnabled || !this.db) return;
-
-        try {
-            await this.db.collection('locations').doc(locationId).update({
-                note: '',
-            });
-            this.renderNotes();
-        } catch (error) {
-            console.error('Error al eliminar nota:', error);
+        if (text) {
+            text.value = ''; // Ensure the input field is empty for a new note
         }
     }
 
     renderNotes() {
-        const select = document.getElementById('noteLocationSelect');
         const list = document.getElementById('notesList');
+        if (!list) return;
 
-        if (!select || !list) return;
+        const currentLocation = this.getCurrentLocation();
+        if (currentLocation) {
+            document.getElementById('notesHeader').textContent = currentLocation.name;
+        }
 
-        select.innerHTML = this.locations.map(loc => `
-            <option value="${loc.id}">${loc.name}</option>
-        `).join('');
+        const currentNotes = this.locationNotes.filter(n => n.locationId === this.currentLocationId);
 
-        this.renderNoteEditor();
-
-        const notes = this.locations.filter(loc => loc.note && loc.note.trim());
-        if (notes.length === 0) {
-            list.innerHTML = '<p class="empty-state">No hay notas.</p>';
+        if (currentNotes.length === 0) {
+            list.innerHTML = '<p class="empty-state">No hay avisos para esta vivienda.</p>';
             return;
         }
 
-        list.innerHTML = notes.map(loc => `
+        // Sort notes by creation date (newest first)
+        currentNotes.sort((a, b) => {
+            const getTime = (val) => {
+                if (!val) return 0;
+                if (typeof val.toDate === 'function') return val.toDate().getTime();
+                return new Date(val).getTime() || 0;
+            };
+            const timeA = getTime(a.createdAt);
+            const timeB = getTime(b.createdAt);
+            return timeB - timeA;
+        });
+
+        list.innerHTML = currentNotes.map(note => `
             <div class="product-item">
                 <div class="product-info">
-                    <div class="product-name">${loc.name}</div>
-                    <div class="product-meta">📝 ${loc.note}</div>
+                    <div class="product-name" style="white-space: pre-wrap; font-weight: normal;">${note.text}</div>
+                    <div class="product-meta">
+                        <small>Creada por ${note.createdBy} el ${this.formatDateFull(note.createdAt)}</small>
+                    </div>
                 </div>
                 <div class="product-buttons">
-                    <button class="btn btn-small" onclick="app.selectNoteLocation('${loc.id}');">Editar</button>
-                    <button class="btn btn-small btn-danger" onclick="app.deleteNote('${loc.id}');">Borrar</button>
+                    <button class="btn btn-small btn-danger" onclick="app.deleteIndividualNote('${note.id}');" title="Borrar nota">
+                        <i class="fas fa-trash"></i>
+                    </button>
                 </div>
             </div>
         `).join('');
@@ -674,7 +720,6 @@ class MiDespensa {
         });
         document.getElementById('saveNoteBtn').addEventListener('click', () => this.saveNote());
         document.getElementById('clearNoteBtn').addEventListener('click', () => this.clearNote());
-        document.getElementById('noteLocationSelect').addEventListener('change', () => this.renderNoteEditor());
 
         document.getElementById('expiryDays').addEventListener('change', (e) => {
             this.settings.expiryDays = parseInt(e.target.value);

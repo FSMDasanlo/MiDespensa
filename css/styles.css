@@ -57,6 +57,12 @@ body {
     flex: 1;
 }
 
+.header-logo {
+    height: 50px;
+    width: auto;
+    border-radius: 8px;
+}
+
 .header h1 {
     font-size: 1.5rem;
     font-weight: 700;
@@ -996,4 +1002,27 @@ body {
     .product-item {
         page-break-inside: avoid;
     }
+}
+
+/* Ajustes específicos para la sección de Notas */
+#notes textarea {
+    width: 100%;
+    min-height: 120px;
+    margin-bottom: 1rem;
+    padding: 0.8rem;
+    border: 1px solid var(--gray-light);
+    border-radius: 8px;
+    font-size: 1rem;
+    font-family: inherit;
+    display: block;
+}
+
+#notes textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(93, 64, 55, 0.1);
+}
+
+.notes-buttons {
+    justify-content: space-between;
 }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MiDespensa - Controla tu hogar</title>
+    <title>Home Status - Controla tu hogar</title>
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -12,7 +12,8 @@
         <!-- Header -->
         <header class="header">
             <div class="header-left">
-                <h1>🏠 MiDespensa</h1>
+                <img src="home_status_blanco.png" alt="Home Status Logo" class="header-logo">
+                <h1>Home Status</h1>
                 <div class="location-selector">
                     <button class="location-btn" id="locationBtn">
                         📍 <span id="currentLocation">Almenara</span>
@@ -115,25 +116,22 @@
             <section id="notes" class="screen">
                 <div class="notes-container">
                     <div class="section">
-                        <h2>📝 Notas</h2>
-                        <div class="setting-item">
-                            <label for="noteLocationSelect">Vivienda</label>
-                            <select id="noteLocationSelect"></select>
-                        </div>
-                        <div class="setting-item">
-                            <label for="noteText">Nota</label>
-                            <textarea id="noteText" placeholder="Ej: Encender el tanque de calefacción al llegar" rows="4"></textarea>
-                        </div>
-                        <div class="modal-buttons">
-                            <button class="btn btn-secondary" type="button" id="clearNoteBtn">Borrar nota</button>
-                            <button class="btn btn-primary" type="button" id="saveNoteBtn">Guardar nota</button>
+                        <h2>📝 Notas - <span id="notesHeader"></span></h2>
+                        <div id="notesList" class="product-list">
+                            <p class="empty-state">No hay avisos para esta vivienda.</p>
                         </div>
                     </div>
 
                     <div class="section">
-                        <h2>Notas guardadas</h2>
-                        <div id="notesList" class="product-list">
-                            <p class="empty-state">No hay notas.</p>
+                        <h2>Nueva nota / Aviso</h2>
+                        <textarea id="noteText" placeholder="Ej: Dejar las llaves en el buzón, encender el termo..." rows="4"></textarea>
+                        <div class="modal-buttons notes-buttons">
+                            <button class="btn btn-secondary" type="button" id="clearNoteBtn">
+                                <i class="fas fa-trash"></i> Borrar
+                            </button>
+                            <button class="btn btn-primary" type="button" id="saveNoteBtn">
+                                <i class="fas fa-save"></i> Guardar
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -363,8 +361,8 @@
                     </div>
 
                     <div class="app-info">
-                        <p><strong>MiDespensa v1.0</strong></p>
-                        <p>Controla tu despensa fácilmente 🏠</p>
+                        <p><strong>Home Status v1.0</strong></p>
+                        <p>Controla tu hogar fácilmente 🏠</p>
                     </div>
                 </div>
             </div>
