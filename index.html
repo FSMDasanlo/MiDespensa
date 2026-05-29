@@ -142,8 +142,17 @@
                 <div class="shopping-container">
                     <div class="section">
                         <h2>📝 Lista de compra</h2>
-                        <div class="input-group">
-                            <input type="text" id="newShoppingItem" placeholder="Ej: Leche, Pan...">
+                        <div class="input-group" style="flex-wrap: wrap;">
+                            <input type="text" id="newShoppingItem" placeholder="Ej: Leche, Pan..." style="flex: 2; min-width: 150px;">
+                            <select id="newShoppingCategory" style="flex: 1; min-width: 120px; border: 1px solid var(--gray-light); border-radius: 10px; padding: 0.5rem; font-size: 0.9rem;">
+                                <option value="pantry">🍞 Despensa</option>
+                                <option value="dairy">🥛 Lácteos</option>
+                                <option value="beverages">🥤 Bebidas</option>
+                                <option value="produce">🥬 Frutas/Verduras</option>
+                                <option value="meat">🍗 Carnes</option>
+                                <option value="frozen">❄️ Congelados</option>
+                                <option value="other">📦 Otros</option>
+                            </select>
                             <button class="btn btn-small" id="addShoppingBtn">
                                 <i class="fas fa-plus"></i>
                             </button>
@@ -154,9 +163,14 @@
                         <p class="empty-state">Lista vacía</p>
                     </div>
 
-                    <button class="btn btn-secondary" id="clearShoppingBtn" style="display:none;">
-                        <i class="fas fa-trash"></i> Limpiar lista
-                    </button>
+                    <div class="modal-buttons">
+                        <button class="btn btn-secondary" id="clearShoppingBtn" style="display:none;">
+                            <i class="fas fa-trash"></i> Limpiar lista
+                        </button>
+                        <button class="btn btn-primary" id="shareWhatsAppBtn" style="display:none; background-color: #25D366; border-color: #25D366;">
+                            <i class="fab fa-whatsapp"></i> WhatsApp
+                        </button>
+                    </div>
                 </div>
             </section>
         </main>

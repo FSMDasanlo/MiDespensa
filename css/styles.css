@@ -555,6 +555,16 @@ body {
     border-bottom: none;
 }
 
+.shopping-category-header {
+    background: var(--light);
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--primary);
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--gray-light);
+}
+
 .shopping-item input[type="checkbox"] {
     width: 24px;
     height: 24px;

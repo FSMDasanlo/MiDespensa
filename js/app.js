@@ -607,12 +607,13 @@ class MiDespensa {
     }
 
     // ============ SHOPPING LIST ============
-    async addShoppingItem(name) {
+    async addShoppingItem(name, category = 'pantry') {
         if (!name.trim()) return;
         if (!this.firestoreEnabled || !this.db) return;
 
         const item = {
             name: name.trim(),
+            category: category,
             completed: false,
             createdAt: new Date(),
         };
@@ -663,6 +664,53 @@ class MiDespensa {
         }
     }
 
+    shareShoppingListViaWhatsApp() {
+        if (this.shoppingList.length === 0) return;
+
+        const categoryMeta = {
+            dairy: { icon: '🥛', name: 'Lácteos' },
+            beverages: { icon: '🥤', name: 'Bebidas' },
+            produce: { icon: '🥬', name: 'Frutas/Verduras' },
+            meat: { icon: '🍗', name: 'Carnes' },
+            frozen: { icon: '❄️', name: 'Congelados' },
+            pantry: { icon: '🍞', name: 'Despensa' },
+            other: { icon: '📦', name: 'Otros' },
+        };
+
+        const pending = this.shoppingList.filter(i => !i.completed);
+        const completed = this.shoppingList.filter(i => i.completed);
+
+        let text = '🛒 *MI LISTA DE COMPRA*\n\n';
+
+        // Agrupar pendientes por categoría
+        const grouped = {};
+        pending.forEach(item => {
+            const cat = item.category || 'other';
+            if (!grouped[cat]) grouped[cat] = [];
+            grouped[cat].push(item);
+        });
+
+        Object.keys(categoryMeta).forEach(catKey => {
+            if (grouped[catKey] && grouped[catKey].length > 0) {
+                text += `*${categoryMeta[catKey].icon} ${categoryMeta[catKey].name.toUpperCase()}*\n`;
+                grouped[catKey].forEach(item => {
+                    text += `- ${item.name}\n`;
+                });
+                text += '\n';
+            }
+        });
+
+        if (completed.length > 0) {
+            text += '*✓ COMPLETADOS*\n';
+            completed.forEach(item => {
+                text += `- ~${item.name}~\n`;
+            });
+        }
+
+        const encodedText = encodeURIComponent(text.trim());
+        window.open(`https://wa.me/?text=${encodedText}`, '_blank');
+    }
+
     // ============ SETUP EVENT LISTENERS ============
     setupEventListeners() {
         // Tab Navigation
@@ -696,6 +744,7 @@ class MiDespensa {
             if (e.key === 'Enter') this.addNewShoppingItem();
         });
         document.getElementById('clearShoppingBtn').addEventListener('click', () => this.clearShoppingList());
+        document.getElementById('shareWhatsAppBtn').addEventListener('click', () => this.shareShoppingListViaWhatsApp());
 
         // Product Modal
         document.getElementById('closeModalBtn').addEventListener('click', () => this.closeProductModal());
@@ -1084,9 +1133,9 @@ class MiDespensa {
     // ============ SHOPPING MODAL ============
     addNewShoppingItem() {
         const input = document.getElementById('newShoppingItem');
-        this.addShoppingItem(input.value);
+        const categorySelect = document.getElementById('newShoppingCategory');
+        this.addShoppingItem(input.value, categorySelect.value);
         input.value = '';
-        this.renderShoppingList();
     }
 
     // ============ CATEGORY FILTERING FROM DASHBOARD ============
@@ -1342,6 +1391,7 @@ class MiDespensa {
         this.renderDashboard();
         this.renderInventory();
         this.renderNotes();
+        this.renderShoppingList();
     }
 
     renderDashboard() {
@@ -1490,23 +1540,62 @@ class MiDespensa {
     renderShoppingList() {
         const list = document.getElementById('shoppingList');
         const clearBtn = document.getElementById('clearShoppingBtn');
+        const shareBtn = document.getElementById('shareWhatsAppBtn');
 
         if (this.shoppingList.length === 0) {
             list.innerHTML = '<p class="empty-state">Lista vacía</p>';
             clearBtn.style.display = 'none';
+            if (shareBtn) shareBtn.style.display = 'none';
             return;
         }
 
         clearBtn.style.display = 'block';
-        list.innerHTML = this.shoppingList.map(item => `
+        if (shareBtn) shareBtn.style.display = 'block';
+        
+        const categoryMeta = {
+            dairy: { icon: '🥛', name: 'Lácteos' },
+            beverages: { icon: '🥤', name: 'Bebidas' },
+            produce: { icon: '🥬', name: 'Frutas/Verduras' },
+            meat: { icon: '🍗', name: 'Carnes' },
+            frozen: { icon: '❄️', name: 'Congelados' },
+            pantry: { icon: '🍞', name: 'Despensa' },
+            other: { icon: '📦', name: 'Otros' },
+        };
+
+        const pending = this.shoppingList.filter(i => !i.completed);
+        const completed = this.shoppingList.filter(i => i.completed);
+
+        // Agrupar pendientes por categoría
+        const grouped = {};
+        pending.forEach(item => {
+            const cat = item.category || 'other';
+            if (!grouped[cat]) grouped[cat] = [];
+            grouped[cat].push(item);
+        });
+
+        let html = '';
+        const renderItem = (item) => `
             <div class="shopping-item">
-                <input type="checkbox" id="item-${item.id}" ${item.completed ? 'checked' : ''} onchange="app.toggleShoppingItem('${item.id}'); app.renderShoppingList();">
+                <input type="checkbox" id="item-${item.id}" ${item.completed ? 'checked' : ''} onchange="app.toggleShoppingItem('${item.id}');">
                 <label for="item-${item.id}">${item.name}</label>
-                <button class="delete-btn" onclick="app.deleteShoppingItem('${item.id}'); app.renderShoppingList();">
-                    🗑️
-                </button>
-            </div>
-        `).join('');
+                <button class="delete-btn" onclick="app.deleteShoppingItem('${item.id}');">🗑️</button>
+            </div>`;
+
+        // Renderizar grupos de pendientes
+        Object.keys(categoryMeta).forEach(catKey => {
+            if (grouped[catKey] && grouped[catKey].length > 0) {
+                html += `<div class="shopping-category-header">${categoryMeta[catKey].icon} ${categoryMeta[catKey].name}</div>`;
+                html += grouped[catKey].map(renderItem).join('');
+            }
+        });
+
+        // Renderizar completados al final
+        if (completed.length > 0) {
+            html += `<div class="shopping-category-header">✓ Completados</div>`;
+            html += completed.map(renderItem).join('');
+        }
+
+        list.innerHTML = html;
     }
 }
 
