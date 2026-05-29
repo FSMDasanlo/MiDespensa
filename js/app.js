@@ -36,13 +36,19 @@ class MiDespensa {
         this.currentInventoryFilterType = 'all';
         this.currentInventoryFilterValue = null;
         this.db = null;
+        this.hasInteracted = false;
         this.init();
     }
 
     async init() {
         await this.initFirestore();
+        this.createStopVoiceButton();
         this.setupEventListeners();
         this.render();
+        
+        document.addEventListener('click', () => {
+            this.hasInteracted = true;
+        }, { once: true });
     }
 
     initFirestore() {
@@ -197,6 +203,92 @@ class MiDespensa {
                     this.locationNotes = []; // Clear notes on error
                     this.render();
                 });
+    }
+
+    // ============ SPEECH FUNCTIONS ============
+    createStopVoiceButton() {
+        const header = document.querySelector('.header');
+        if (header && !document.getElementById('stopVoiceBtn')) {
+            const btn = document.createElement('button');
+            btn.id = 'stopVoiceBtn';
+            btn.className = 'header-btn';
+            btn.title = 'Detener voz';
+            btn.style.display = 'none'; // Oculto por defecto
+            btn.style.marginRight = '0.5rem';
+            btn.innerHTML = '<i class="fas fa-stop-circle"></i>';
+            btn.onclick = () => this.stopSpeaking();
+            
+            // Insertar antes del botón de configuración si existe
+            const settingsBtn = document.getElementById('settingsBtn');
+            if (settingsBtn) {
+                header.insertBefore(btn, settingsBtn);
+            } else {
+                header.appendChild(btn);
+            }
+        }
+    }
+
+    speak(text, onEndCallback = null) {
+        if (!('speechSynthesis' in window)) return;
+        
+        // Cancelar cualquier discurso previo
+        window.speechSynthesis.cancel();
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'es-ES';
+        utterance.rate = 1;
+        
+        const stopBtn = document.getElementById('stopVoiceBtn');
+        
+        utterance.onstart = () => {
+            if (stopBtn) stopBtn.style.display = 'block';
+        };
+
+        const cleanup = () => {
+            if (stopBtn) stopBtn.style.display = 'none';
+            if (onEndCallback) onEndCallback();
+        };
+
+        utterance.onend = cleanup;
+        utterance.onerror = cleanup;
+        
+        window.speechSynthesis.speak(utterance);
+    }
+
+    stopSpeaking() {
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            const stopBtn = document.getElementById('stopVoiceBtn');
+            if (stopBtn) stopBtn.style.display = 'none';
+        }
+    }
+
+    readAllNotesAloud() {
+        if (this.locationNotes.length === 0) {
+            this.speak("No hay notas para esta vivienda.");
+            return;
+        }
+        const notesText = this.locationNotes.map(n => n.text).join('. ');
+        this.speak(`Avisos de ${this.getCurrentLocation()?.name || 'la vivienda'}: ${notesText}`);
+    }
+
+    readFilteredProductsAloud() {
+        const search = document.getElementById('searchInput')?.value || '';
+        const filtered = this.filterProducts(search, this.currentInventoryFilterType, this.currentInventoryFilterValue);
+        
+        if (filtered.length === 0) {
+            this.speak("No hay productos que mostrar.");
+            return;
+        }
+
+        const productsText = filtered.map(p => {
+            let pText = `${p.name}, ${p.quantity}.`;
+            const status = this.getExpiryStatus(p);
+            if (status === 'expired') pText += " Está caducado.";
+            return pText;
+        }).join(' ');
+
+        this.speak(`Lista de productos: ${productsText}`);
     }
 
     // ============ PRODUCTS ============
@@ -450,7 +542,8 @@ class MiDespensa {
 
         const currentLocation = this.getCurrentLocation();
         if (currentLocation) {
-            document.getElementById('notesHeader').textContent = currentLocation.name;
+            document.getElementById('notesHeader').innerHTML = `${currentLocation.name} 
+                <button class="product-btn" style="color: var(--primary); font-size: 1.1rem; display: inline-block; vertical-align: middle; padding: 0; margin-left: 5px;" onclick="app.readAllNotesAloud()" title="Leer todas las notas"><i class="fas fa-volume-up"></i></button>`;
         }
 
         const currentNotes = this.locationNotes.filter(n => n.locationId === this.currentLocationId);
@@ -480,8 +573,8 @@ class MiDespensa {
                         <small>Creada por ${note.createdBy} el ${this.formatDateFull(note.createdAt)}</small>
                     </div>
                 </div>
-                <div class="product-buttons">
-                    <button class="btn btn-small btn-danger" onclick="app.deleteIndividualNote('${note.id}');" title="Borrar nota">
+                <div class="product-actions">
+                    <button class="product-btn" onclick="event.stopPropagation(); app.deleteIndividualNote('${note.id}');" title="Borrar nota">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -1485,7 +1578,8 @@ class MiDespensa {
     renderInventory(search = '') {
         const inventoryStatus = document.getElementById('inventoryStatus');
         if (inventoryStatus) {
-            inventoryStatus.textContent = `Mostrando: ${this.getInventoryFilterLabel()}`;
+            inventoryStatus.innerHTML = `Mostrando: ${this.getInventoryFilterLabel()} 
+                <button class="product-btn" style="color: #1e3a8a; font-size: 1.1rem; display: inline-block; vertical-align: middle; padding: 0 0.5rem;" onclick="app.readFilteredProductsAloud()" title="Leer lista actual"><i class="fas fa-volume-up"></i></button>`;
         }
 
         const filtered = this.filterProducts(search, this.currentInventoryFilterType, this.currentInventoryFilterValue);
@@ -1529,9 +1623,11 @@ class MiDespensa {
                         ${p.barcode ? `<div class="product-meta" style="color: #999; font-size: 0.8rem;">🔎 ${p.barcode}</div>` : ''}
                         ${p.notes ? `<div class="product-meta" style="color: #999; font-size: 0.8rem;">📝 ${p.notes}</div>` : ''}
                     </div>
-                    <button class="product-btn" onclick="event.stopPropagation(); app.consumeProduct('${p.firebaseId}')">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                    <div class="product-actions">
+                        <button class="product-btn" onclick="event.stopPropagation(); app.consumeProduct('${p.firebaseId}')" title="Eliminar">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
                 </div>
             `;
         }).join('');
