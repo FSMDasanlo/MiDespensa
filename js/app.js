@@ -35,6 +35,7 @@ class MiDespensa {
         this.firestoreEnabled = false;
         this.currentInventoryFilterType = 'all';
         this.currentInventoryFilterValue = null;
+        this.shoppingSearch = '';
         this.db = null;
         this.hasInteracted = false;
         this.init();
@@ -42,7 +43,6 @@ class MiDespensa {
 
     async init() {
         await this.initFirestore();
-        this.createStopVoiceButton();
         this.setupEventListeners();
         this.render();
         
@@ -206,28 +206,6 @@ class MiDespensa {
     }
 
     // ============ SPEECH FUNCTIONS ============
-    createStopVoiceButton() {
-        const header = document.querySelector('.header');
-        if (header && !document.getElementById('stopVoiceBtn')) {
-            const btn = document.createElement('button');
-            btn.id = 'stopVoiceBtn';
-            btn.className = 'header-btn';
-            btn.title = 'Detener voz';
-            btn.style.display = 'none'; // Oculto por defecto
-            btn.style.marginRight = '0.5rem';
-            btn.innerHTML = '<i class="fas fa-stop-circle"></i>';
-            btn.onclick = () => this.stopSpeaking();
-            
-            // Insertar antes del botón de configuración si existe
-            const settingsBtn = document.getElementById('settingsBtn');
-            if (settingsBtn) {
-                header.insertBefore(btn, settingsBtn);
-            } else {
-                header.appendChild(btn);
-            }
-        }
-    }
-
     speak(text, onEndCallback = null) {
         if (!('speechSynthesis' in window)) return;
         
@@ -238,14 +216,12 @@ class MiDespensa {
         utterance.lang = 'es-ES';
         utterance.rate = 1;
         
-        const stopBtn = document.getElementById('stopVoiceBtn');
-        
         utterance.onstart = () => {
-            if (stopBtn) stopBtn.style.display = 'block';
+            document.querySelectorAll('.stop-voice-btn').forEach(btn => btn.style.display = 'inline-block');
         };
 
         const cleanup = () => {
-            if (stopBtn) stopBtn.style.display = 'none';
+            document.querySelectorAll('.stop-voice-btn').forEach(btn => btn.style.display = 'none');
             if (onEndCallback) onEndCallback();
         };
 
@@ -258,8 +234,7 @@ class MiDespensa {
     stopSpeaking() {
         if ('speechSynthesis' in window) {
             window.speechSynthesis.cancel();
-            const stopBtn = document.getElementById('stopVoiceBtn');
-            if (stopBtn) stopBtn.style.display = 'none';
+            document.querySelectorAll('.stop-voice-btn').forEach(btn => btn.style.display = 'none');
         }
     }
 
@@ -541,9 +516,12 @@ class MiDespensa {
         if (!list) return;
 
         const currentLocation = this.getCurrentLocation();
+        const isSpeaking = window.speechSynthesis.speaking;
+        const stopBtnStyle = isSpeaking ? 'inline-block' : 'none';
         if (currentLocation) {
             document.getElementById('notesHeader').innerHTML = `${currentLocation.name} 
-                <button class="product-btn" style="color: var(--primary); font-size: 1.1rem; display: inline-block; vertical-align: middle; padding: 0; margin-left: 5px;" onclick="app.readAllNotesAloud()" title="Leer todas las notas"><i class="fas fa-volume-up"></i></button>`;
+                <button class="product-btn" style="color: var(--primary); font-size: 1.1rem; display: inline-block; vertical-align: middle; padding: 0; margin-left: 5px;" onclick="app.readAllNotesAloud()" title="Leer todas las notas"><i class="fas fa-volume-up"></i></button>
+                <button class="product-btn stop-voice-btn" style="color: var(--danger); font-size: 1.1rem; display: ${stopBtnStyle}; vertical-align: middle; padding: 0; margin-left: 5px;" onclick="app.stopSpeaking()" title="Detener voz"><i class="fas fa-stop-circle"></i></button>`;
         }
 
         const currentNotes = this.locationNotes.filter(n => n.locationId === this.currentLocationId);
@@ -745,11 +723,14 @@ class MiDespensa {
 
     async clearShoppingList() {
         if (!this.firestoreEnabled || !this.db) return;
+        if (!confirm('¿Quieres desmarcar todos los productos para empezar una nueva compra? (No se borrarán de la lista)')) return;
 
         try {
             const batch = this.db.batch();
             this.shoppingList.forEach(item => {
-                batch.delete(this.db.collection('shoppingList').doc(item.id));
+                if (item.completed) {
+                    batch.update(this.db.collection('shoppingList').doc(item.id), { completed: false });
+                }
             });
             await batch.commit();
         } catch (error) {
@@ -1577,9 +1558,12 @@ class MiDespensa {
 
     renderInventory(search = '') {
         const inventoryStatus = document.getElementById('inventoryStatus');
+        const isSpeaking = window.speechSynthesis.speaking;
+        const stopBtnStyle = isSpeaking ? 'inline-block' : 'none';
         if (inventoryStatus) {
             inventoryStatus.innerHTML = `Mostrando: ${this.getInventoryFilterLabel()} 
-                <button class="product-btn" style="color: #1e3a8a; font-size: 1.1rem; display: inline-block; vertical-align: middle; padding: 0 0.5rem;" onclick="app.readFilteredProductsAloud()" title="Leer lista actual"><i class="fas fa-volume-up"></i></button>`;
+                <button class="product-btn" style="color: #1e3a8a; font-size: 1.1rem; display: inline-block; vertical-align: middle; padding: 0 0.5rem;" onclick="app.readFilteredProductsAloud()" title="Leer lista actual"><i class="fas fa-volume-up"></i></button>
+                <button class="product-btn stop-voice-btn" style="color: var(--danger); font-size: 1.1rem; display: ${stopBtnStyle}; vertical-align: middle; padding: 0 0.5rem;" onclick="app.stopSpeaking()" title="Detener voz"><i class="fas fa-stop-circle"></i></button>`;
         }
 
         const filtered = this.filterProducts(search, this.currentInventoryFilterType, this.currentInventoryFilterValue);
@@ -1637,17 +1621,48 @@ class MiDespensa {
         const list = document.getElementById('shoppingList');
         const clearBtn = document.getElementById('clearShoppingBtn');
         const shareBtn = document.getElementById('shareWhatsAppBtn');
+        const container = document.querySelector('.shopping-container');
 
         if (this.shoppingList.length === 0) {
             list.innerHTML = '<p class="empty-state">Lista vacía</p>';
             clearBtn.style.display = 'none';
             if (shareBtn) shareBtn.style.display = 'none';
+            const existingSearch = document.getElementById('shoppingSearchInput');
+            if (existingSearch) existingSearch.parentElement.remove();
             return;
         }
 
+        // Inyectar buscador si no existe (Mejora para listas largas)
+        if (container && !document.getElementById('shoppingSearchInput')) {
+            const searchDiv = document.createElement('div');
+            searchDiv.className = 'search-bar';
+            searchDiv.style.marginBottom = '1rem';
+            searchDiv.innerHTML = `
+                <i class="fas fa-search"></i>
+                <input type="text" id="shoppingSearchInput" placeholder="Buscar en el catálogo..." value="${this.shoppingSearch}">
+            `;
+            container.insertBefore(searchDiv, list);
+            document.getElementById('shoppingSearchInput').addEventListener('input', (e) => {
+                this.shoppingSearch = e.target.value;
+                this.renderShoppingList();
+            });
+        }
+
         clearBtn.style.display = 'block';
+        clearBtn.innerHTML = '<i class="fas fa-undo"></i> Reiniciar Checks';
+        clearBtn.title = "Quitar el check a todos los productos comprados";
+        clearBtn.className = 'btn btn-secondary btn-small';
+
         if (shareBtn) shareBtn.style.display = 'block';
         
+        // Filtrar por búsqueda
+        let filteredItems = this.shoppingList;
+        if (this.shoppingSearch) {
+            filteredItems = filteredItems.filter(i => 
+                i.name.toLowerCase().includes(this.shoppingSearch.toLowerCase())
+            );
+        }
+
         const categoryMeta = {
             dairy: { icon: '🥛', name: 'Lácteos' },
             beverages: { icon: '🥤', name: 'Bebidas' },
@@ -1658,8 +1673,8 @@ class MiDespensa {
             other: { icon: '📦', name: 'Otros' },
         };
 
-        const pending = this.shoppingList.filter(i => !i.completed);
-        const completed = this.shoppingList.filter(i => i.completed);
+        const pending = filteredItems.filter(i => !i.completed);
+        const completed = filteredItems.filter(i => i.completed);
 
         // Agrupar pendientes por categoría
         const grouped = {};
