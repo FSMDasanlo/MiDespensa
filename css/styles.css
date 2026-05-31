@@ -563,6 +563,16 @@ body {
     color: var(--primary);
     text-transform: uppercase;
     border-bottom: 1px solid var(--gray-light);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.shopping-item img {
+    flex-shrink: 0;
+    border: 1px solid var(--gray-light);
+    cursor: pointer;
+    transition: transform 0.2s;
 }
 
 .shopping-item input[type="checkbox"] {

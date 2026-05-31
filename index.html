@@ -151,6 +151,7 @@
                                 <option value="produce">🥬 Frutas/Verduras</option>
                                 <option value="meat">🍗 Carnes</option>
                                 <option value="frozen">❄️ Congelados</option>
+                                <option value="drugstore">🧼 Droguería</option>
                                 <option value="other">📦 Otros</option>
                             </select>
                             <button class="btn btn-small" id="addShoppingBtn">
@@ -231,6 +232,7 @@
                                 <option value="meat">🍗 Carnes</option>
                                 <option value="frozen">❄️ Congelados</option>
                                 <option value="pantry">🍞 Despensa</option>
+                                <option value="drugstore">🧼 Droguería</option>
                                 <option value="other">📦 Otros</option>
                             </select>
                         </div>
@@ -297,6 +299,21 @@
                     <div class="modal-buttons">
                         <button type="button" class="btn btn-secondary" id="cancelScanBtn">Cancelar</button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Vista previa de imagen -->
+        <div id="imagePreviewModal" class="modal">
+            <div class="modal-content modal-small">
+                <div class="modal-header">
+                    <h2 id="previewName">Vista previa</h2>
+                    <button class="close-btn" id="closePreviewBtn">&times;</button>
+                </div>
+                <div class="form" style="text-align: center;">
+                    <img id="previewImage" src="" alt="Producto" style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-bottom: 1rem; box-shadow: var(--shadow); object-fit: contain;">
+                    <p id="previewBrand" style="font-weight: 600; color: var(--primary); margin-bottom: 1rem;"></p>
+                    <button type="button" class="btn btn-primary" style="width: 100%;" id="closePreviewBtnBottom">Cerrar</button>
                 </div>
             </div>
         </div>

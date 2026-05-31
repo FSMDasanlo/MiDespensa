@@ -11,6 +11,7 @@
 // shoppingList/{itemId}
 //   - name: string
 //   - completed: boolean
+//   - inCart: boolean
 //   - createdAt: timestamp
 // locations/{locationId}/notes/{noteId}
 // settings/global
@@ -24,6 +25,7 @@ class MiDespensa {
         this.locations = [];
         this.locationNotes = []; // Array to hold notes for the current location
         this.currentLocationId = null;
+        this.offSearchResults = []; // Resultados de la búsqueda en internet
         this.settings = {
             expiryDays: 2,
             userName: '',
@@ -663,6 +665,7 @@ class MiDespensa {
             meat: { icon: '🍗', name: 'Carnes', count: 0 },
             frozen: { icon: '❄️', name: 'Congelados', count: 0 },
             pantry: { icon: '🍞', name: 'Despensa', count: 0 },
+            drugstore: { icon: '🧼', name: 'Droguería', count: 0 },
             other: { icon: '📦', name: 'Otros', count: 0 },
         };
 
@@ -678,21 +681,44 @@ class MiDespensa {
     }
 
     // ============ SHOPPING LIST ============
-    async addShoppingItem(name, category = 'pantry') {
+    async addShoppingItem(name, category = 'pantry', imageUrl = null, notes = '') {
         if (!name.trim()) return;
         if (!this.firestoreEnabled || !this.db) return;
+        if (imageUrl === 'null') imageUrl = null; // Limpiar string "null" accidental
 
         const item = {
             name: name.trim(),
             category: category,
             completed: false,
+            inCart: true,
+            imageUrl: imageUrl || null,
+            notes: notes || '',
             createdAt: new Date(),
         };
 
         try {
-            await this.db.collection('shoppingList').add(item);
+            // Verificar si el item ya existe en el catálogo para no duplicar
+            const existing = this.shoppingList.find(i => i.name.toLowerCase() === name.trim().toLowerCase());
+            if (existing) {
+                await this.toggleInCart(existing.id, true);
+            } else {
+                await this.db.collection('shoppingList').add(item);
+            }
+            this.offSearchResults = []; // Limpiar resultados tras añadir
         } catch (error) {
             console.error('Error al añadir item de compra:', error);
+        }
+    }
+
+    async toggleInCart(firebaseId, isInCart) {
+        if (!this.firestoreEnabled || !this.db) return;
+        try {
+            await this.db.collection('shoppingList').doc(firebaseId).update({
+                inCart: isInCart,
+                completed: false // Si entra al carrito, entra como no completado
+            });
+        } catch (error) {
+            console.error('Error al mover item al carrito:', error);
         }
     }
 
@@ -728,8 +754,8 @@ class MiDespensa {
         try {
             const batch = this.db.batch();
             this.shoppingList.forEach(item => {
-                if (item.completed) {
-                    batch.update(this.db.collection('shoppingList').doc(item.id), { completed: false });
+                if (item.inCart) {
+                    batch.update(this.db.collection('shoppingList').doc(item.id), { completed: false, inCart: false });
                 }
             });
             await batch.commit();
@@ -748,17 +774,19 @@ class MiDespensa {
             meat: { icon: '🍗', name: 'Carnes' },
             frozen: { icon: '❄️', name: 'Congelados' },
             pantry: { icon: '🍞', name: 'Despensa' },
+            drugstore: { icon: '🧼', name: 'Droguería' },
             other: { icon: '📦', name: 'Otros' },
         };
 
         const pending = this.shoppingList.filter(i => !i.completed);
-        const completed = this.shoppingList.filter(i => i.completed);
+        const completed = this.shoppingList.filter(i => i.inCart && i.completed);
+        const toBuy = this.shoppingList.filter(i => i.inCart && !i.completed);
 
         let text = '🛒 *MI LISTA DE COMPRA*\n\n';
 
         // Agrupar pendientes por categoría
         const grouped = {};
-        pending.forEach(item => {
+        toBuy.forEach(item => {
             const cat = item.category || 'other';
             if (!grouped[cat]) grouped[cat] = [];
             grouped[cat].push(item);
@@ -880,6 +908,17 @@ class MiDespensa {
         document.getElementById('locationModal').addEventListener('click', (e) => {
             if (e.target.id === 'locationModal') this.closeLocationModal();
         });
+        
+        // Image Preview Modal
+        document.getElementById('closePreviewBtn').addEventListener('click', () => {
+            document.getElementById('imagePreviewModal').classList.remove('active');
+        });
+        document.getElementById('closePreviewBtnBottom').addEventListener('click', () => {
+            document.getElementById('imagePreviewModal').classList.remove('active');
+        });
+        document.getElementById('imagePreviewModal').addEventListener('click', (e) => {
+            if (e.target.id === 'imagePreviewModal') document.getElementById('imagePreviewModal').classList.remove('active');
+        });
     }
 
     // ============ TAB SWITCHING ============
@@ -902,6 +941,20 @@ class MiDespensa {
         if (tab === 'dashboard') {
             this.renderDashboard();
         }
+    }
+
+    showImagePreview(name, imageUrl, notes) {
+        const modal = document.getElementById('imagePreviewModal');
+        document.getElementById('previewName').textContent = name;
+        const img = document.getElementById('previewImage');
+        if (imageUrl && imageUrl !== 'null' && imageUrl !== '') {
+            img.src = imageUrl;
+            img.style.display = 'block';
+        } else {
+            img.style.display = 'none';
+        }
+        document.getElementById('previewBrand').textContent = notes || 'Sin marca especificada';
+        modal.classList.add('active');
     }
 
     // ============ MODAL MANAGEMENT ============
@@ -1079,31 +1132,37 @@ class MiDespensa {
         }
     }
 
-    fetchProductInfoByBarcode(barcode) {
+    async fetchProductInfoByBarcode(barcode) {
         const status = document.getElementById('scanStatus');
-        status.textContent = 'Buscando en Open Food Facts...';
+        status.textContent = 'Buscando producto...';
 
-        fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`)
-            .then(response => response.json())
-            .then(data => {
+        // Lista de bases de datos a consultar
+        const bases = [
+            'world.openfoodfacts.org',
+            'world.openbeautyfacts.org',
+            'world.openproductsfacts.org'
+        ];
+
+        for (const base of bases) {
+            try {
+                const response = await fetch(`https://${base}/api/v0/product/${barcode}.json`);
+                const data = await response.json();
+
                 if (data.status === 1 && data.product) {
-                    status.textContent = 'Producto encontrado. Completando datos...';
                     this.populateProductFieldsFromFoodFacts(data.product, barcode);
                     this.playBeep();
-                    document.getElementById('scanStatus').textContent = 'Datos cargados. Revisa y guarda.';
-                } else {
-                    status.textContent = 'Producto no encontrado en Open Food Facts. Puedes ingresarlo manualmente.';
-                    alert('No se encontró el producto. Puedes ingresarlo manualmente.');
+                    status.textContent = 'Producto encontrado!';
+                    this.closeScanModal();
+                    return; // Salimos si lo encontramos
                 }
-            })
-            .catch(error => {
-                console.error('Error fetching product info:', error);
-                status.textContent = 'Error al conectar con Open Food Facts. Intenta de nuevo.';
-                alert('No se pudo conectar con Open Food Facts. Intenta de nuevo.');
-            })
-            .finally(() => {
-                this.closeScanModal(); // Cierra el modal del escáner después de procesar la respuesta (éxito o error)
-            });
+            } catch (error) {
+                console.warn(`No encontrado en ${base}`);
+            }
+        }
+
+        status.textContent = 'No encontrado. Introduce datos manualmente.';
+        alert('No se encontró el producto en ninguna base de datos.');
+        this.closeScanModal();
     }
 
     populateProductFieldsFromFoodFacts(product, barcode) {
@@ -1145,6 +1204,7 @@ class MiDespensa {
             meat: ['meat', 'chicken', 'beef', 'pork', 'ham', 'sausages'],
             frozen: ['frozen'],
             pantry: ['bread', 'cereal', 'sauce', 'pasta', 'rice', 'flour', 'sugar', 'salt', 'snack'],
+            drugstore: ['cleaning', 'detergent', 'shampoo', 'soap', 'hygiene', 'beauty', 'cosmetic', 'perfume', 'gel', 'dishwash'],
         };
 
         const lowerTags = tags.map(tag => tag.toLowerCase());
@@ -1210,6 +1270,42 @@ class MiDespensa {
         const categorySelect = document.getElementById('newShoppingCategory');
         this.addShoppingItem(input.value, categorySelect.value);
         input.value = '';
+    }
+
+    async addFromOFFResults(index) {
+        const p = this.offSearchResults[index];
+        if (!p) return;
+        await this.addShoppingItem(p.name, p.category, p.imageUrl, p.notes);
+
+        // Limpiar el buscador para ver la lista completa actualizada
+        this.shoppingSearch = '';
+        const searchInput = document.getElementById('shoppingSearchInput');
+        if (searchInput) searchInput.value = '';
+        this.renderShoppingList();
+    }
+
+    async searchOpenFoodFacts(query) {
+        if (query.length < 3) return;
+        const status = document.getElementById('shoppingStatus');
+        if (status) status.textContent = 'Buscando en internet...';
+
+        try {
+            const response = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10`);
+            const data = await response.json();
+            
+            this.offSearchResults = data.products.map(p => ({
+                name: p.product_name || p.generic_name || 'Producto desconocido',
+                imageUrl: p.image_small_url || null,
+                category: this.mapFoodFactsCategory(p.categories_tags || []),
+                notes: p.brands ? `Marca: ${p.brands}` : ''
+            }));
+            
+            this.renderShoppingList();
+        } catch (error) {
+            console.error('Error buscando en OFF:', error);
+        } finally {
+            if (status) status.textContent = '';
+        }
     }
 
     // ============ CATEGORY FILTERING FROM DASHBOARD ============
@@ -1540,6 +1636,7 @@ class MiDespensa {
             meat: 'Carnes',
             frozen: 'Congelados',
             pantry: 'Despensa',
+            drugstore: 'Droguería',
             other: 'Otros',
         };
         return names[categoryKey] || 'Categoría';
@@ -1598,7 +1695,7 @@ class MiDespensa {
                     <div class="product-info">
                         <div class="product-name">${p.name}</div>
                         <div class="product-meta">
-                            <span class="product-badge ${p.perishable ? 'perishable' : ''}">${p.category === 'dairy' ? '🥛' : p.category === 'beverages' ? '🥤' : p.category === 'produce' ? '🥬' : p.category === 'meat' ? '🍗' : p.category === 'frozen' ? '❄️' : p.category === 'pantry' ? '🍞' : '📦'}</span>
+                            <span class="product-badge ${p.perishable ? 'perishable' : ''}">${p.category === 'dairy' ? '🥛' : p.category === 'beverages' ? '🥤' : p.category === 'produce' ? '🥬' : p.category === 'meat' ? '🍗' : p.category === 'frozen' ? '❄️' : p.category === 'pantry' ? '🍞' : p.category === 'drugstore' ? '🧼' : '📦'}</span>
                             <span class="product-badge ${p.location === 'fridge' || p.location === 'freezer' ? 'fridge' : ''}">${p.location === 'fridge' ? '🧊 Frigo' : p.location === 'freezer' ? '❄️ Congelador' : '🍞 Despensa'}</span>
                             ${p.perishable ? '<span class="product-badge perishable">Perecedero</span>' : ''}
                         </div>
@@ -1647,10 +1744,20 @@ class MiDespensa {
                 this.renderShoppingList();
             });
         }
+        
+        // Inyectar estado de carga si no existe
+        if (container && !document.getElementById('shoppingStatus')) {
+            const statusDiv = document.createElement('div');
+            statusDiv.id = 'shoppingStatus';
+            statusDiv.style.fontSize = '0.8rem';
+            statusDiv.style.color = 'var(--primary)';
+            statusDiv.style.textAlign = 'center';
+            container.insertBefore(statusDiv, list);
+        }
 
         clearBtn.style.display = 'block';
-        clearBtn.innerHTML = '<i class="fas fa-undo"></i> Reiniciar Checks';
-        clearBtn.title = "Quitar el check a todos los productos comprados";
+        clearBtn.innerHTML = '<i class="fas fa-trash-alt"></i> Limpiar Carrito';
+        clearBtn.title = "Quitar todos los productos del carrito y volver al catálogo";
         clearBtn.className = 'btn btn-secondary btn-small';
 
         if (shareBtn) shareBtn.style.display = 'block';
@@ -1670,43 +1777,108 @@ class MiDespensa {
             meat: { icon: '🍗', name: 'Carnes' },
             frozen: { icon: '❄️', name: 'Congelados' },
             pantry: { icon: '🍞', name: 'Despensa' },
+            drugstore: { icon: '🧼', name: 'Droguería' },
             other: { icon: '📦', name: 'Otros' },
         };
 
-        const pending = filteredItems.filter(i => !i.completed);
-        const completed = filteredItems.filter(i => i.completed);
+        const isSearching = this.shoppingSearch.length > 0;
+        // El catálogo oculta productos que ya están en el carrito para no duplicar, 
+        // pero al buscar permitimos verlos marcados para dar contexto.
+        const catalog = filteredItems.filter(i => !i.inCart || (isSearching && i.inCart)).sort((a, b) => a.name.localeCompare(b.name));
+        const toBuy = filteredItems.filter(i => i.inCart && !i.completed);
+        const completed = filteredItems.filter(i => i.inCart && i.completed).sort((a, b) => a.name.localeCompare(b.name));
 
         // Agrupar pendientes por categoría
         const grouped = {};
-        pending.forEach(item => {
+        toBuy.forEach(item => {
             const cat = item.category || 'other';
             if (!grouped[cat]) grouped[cat] = [];
             grouped[cat].push(item);
         });
 
         let html = '';
-        const renderItem = (item) => `
-            <div class="shopping-item">
-                <input type="checkbox" id="item-${item.id}" ${item.completed ? 'checked' : ''} onchange="app.toggleShoppingItem('${item.id}');">
-                <label for="item-${item.id}">${item.name}</label>
-                <button class="delete-btn" onclick="app.deleteShoppingItem('${item.id}');">🗑️</button>
-            </div>`;
+        
+        // 1. SECCIÓN: POR COMPRAR (CARRITO)
+        if (toBuy.length > 0) {
+            html += `<div class="shopping-category-header" style="background: #fff9db; color: #f08c00;">🛒 Carrito (Pendiente)</div>`;
+            Object.keys(categoryMeta).forEach(catKey => {
+                if (grouped[catKey] && grouped[catKey].length > 0) {
+                    // Ordenar alfabéticamente dentro de cada categoría
+                    grouped[catKey].sort((a, b) => a.name.localeCompare(b.name));
+                    html += `<div class="shopping-category-header" style="font-size: 0.65rem; padding-left: 2rem; opacity: 0.8;">${categoryMeta[catKey].icon} ${categoryMeta[catKey].name}</div>`;
+                    html += grouped[catKey].map(item => this.renderShoppingItemRow(item, true)).join('');
+                }
+            });
+        }
 
-        // Renderizar grupos de pendientes
-        Object.keys(categoryMeta).forEach(catKey => {
-            if (grouped[catKey] && grouped[catKey].length > 0) {
-                html += `<div class="shopping-category-header">${categoryMeta[catKey].icon} ${categoryMeta[catKey].name}</div>`;
-                html += grouped[catKey].map(renderItem).join('');
-            }
-        });
-
-        // Renderizar completados al final
+        // 2. SECCIÓN: COMPRADO
         if (completed.length > 0) {
-            html += `<div class="shopping-category-header">✓ Completados</div>`;
-            html += completed.map(renderItem).join('');
+            html += `<div class="shopping-category-header" style="background: #ebfbee; color: #2b8a3e;">✅ Comprado</div>`;
+            html += completed.map(item => this.renderShoppingItemRow(item, true)).join('');
+        }
+
+        // 3. SECCIÓN: CATÁLOGO LOCAL / BASE
+        if (catalog.length > 0) {
+            html += `<div class="shopping-category-header" style="background: #f1f3f5; color: #495057;">📁 Catálogo (Añadir al carrito)</div>`;
+            html += catalog.map(item => this.renderShoppingItemRow(item, false)).join('');
+        }
+
+        // 4. SECCIÓN: RESULTADOS DE OPEN FOOD FACTS (Internet)
+        if (this.offSearchResults.length > 0) {
+            html += `<div class="shopping-category-header" style="background: #e7f5ff; color: #1971c2;">🌍 Resultados en Internet</div>`;
+            html += this.offSearchResults.map((p, index) => {
+                const localMatch = this.shoppingList.find(i => i.name.toLowerCase() === p.name.toLowerCase());
+                // Si ya está en el carrito actual, desaparece de la lista de internet para evitar ruido
+                if (localMatch && localMatch.inCart) return '';
+
+                const escapedName = p.name.replace(/'/g, "\\'");
+                const escapedNotes = (p.notes || '').replace(/'/g, "\\'");
+                const escapedImg = (p.imageUrl || '').replace(/'/g, "\\'");
+
+                return `
+                <div class="shopping-item">
+                    ${localMatch ? 
+                        `<button class="product-btn" onclick="app.toggleInCart('${localMatch.id}', true);" style="color: var(--success);" title="En catálogo. Añadir al carrito"><i class="fas fa-cart-plus"></i></button>` :
+                        `<button class="product-btn" onclick="app.addFromOFFResults(${index});" style="color: var(--primary);" title="Descargar al catálogo"><i class="fas fa-cloud-download-alt"></i></button>`
+                    }
+                    ${p.imageUrl ? `<img src="${p.imageUrl}" style="width: 30px; height: 30px; border-radius: 4px; object-fit: cover;" onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')">` : ''}
+                    <label style="color: var(--gray-dark); font-weight: normal; font-size: 0.9rem; cursor: pointer;" onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')">${p.name} ${localMatch ? '<small style="color: var(--gray);">(en catálogo)</small>' : ''}</label>
+                </div>
+            `;}).join('');
+        } else if (this.shoppingSearch.length >= 3) {
+            html += `<div style="padding: 1rem; text-align: center;">
+                <button class="btn btn-secondary btn-small" onclick="app.searchOpenFoodFacts('${this.shoppingSearch.replace(/'/g, "\\'")}');">
+                    <i class="fas fa-search"></i> Buscar "${this.shoppingSearch}" en internet
+                </button>
+            </div>`;
         }
 
         list.innerHTML = html;
+    }
+
+    renderShoppingItemRow(item, isInCart) {
+        const escapedName = (item.name || '').replace(/'/g, "\\'");
+        const escapedNotes = (item.notes || '').replace(/'/g, "\\'");
+        const escapedImg = (item.imageUrl || '').replace(/'/g, "\\'");
+
+        return `
+            <div class="shopping-item" style="${!isInCart && item.inCart ? 'opacity: 0.5;' : ''}">
+                ${item.imageUrl ? `<img src="${item.imageUrl}" style="width: 30px; height: 30px; border-radius: 4px; object-fit: cover; opacity: ${item.completed ? '0.5' : '1'}" onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')">` : ''}
+                ${isInCart ? 
+                    `<input type="checkbox" id="item-${item.id}" ${item.completed ? 'checked' : ''} onchange="app.toggleShoppingItem('${item.id}');">` :
+                    (item.inCart ? 
+                        `<button class="product-btn" style="color: var(--gray);" title="Ya está en el carrito"><i class="fas fa-check-circle"></i></button>` :
+                        `<button class="product-btn" onclick="app.toggleInCart('${item.id}', true);" style="color: var(--success);" title="Añadir al carrito"><i class="fas fa-cart-plus"></i></button>`
+                    )
+                }
+                <label for="item-${item.id}" style="${!isInCart ? 'color: var(--gray); font-weight: normal; cursor: pointer;' : ''}" ${!isInCart ? `onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')"` : ''}>${item.name}</label>
+                <div class="product-actions">
+                    ${isInCart ? 
+                        `<button class="delete-btn" onclick="app.toggleInCart('${item.id}', false);" title="Quitar del carrito"><i class="fas fa-minus-square"></i></button>` :
+                        `<button class="delete-btn" onclick="app.deleteShoppingItem('${item.id}');" title="Eliminar del catálogo"><i class="fas fa-trash"></i></button>`
+                    }
+                </div>
+            </div>`;
     }
 }
 
