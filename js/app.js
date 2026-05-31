@@ -38,6 +38,7 @@ class MiDespensa {
         this.currentInventoryFilterType = 'all';
         this.currentInventoryFilterValue = null;
         this.shoppingSearch = '';
+        this.selectedSupermarket = null;
         this.db = null;
         this.hasInteracted = false;
         this.init();
@@ -681,7 +682,7 @@ class MiDespensa {
     }
 
     // ============ SHOPPING LIST ============
-    async addShoppingItem(name, category = 'pantry', imageUrl = null, notes = '') {
+    async addShoppingItem(name, category = 'pantry', imageUrl = null, notes = '', metadata = {}) {
         if (!name.trim()) return;
         if (!this.firestoreEnabled || !this.db) return;
         if (imageUrl === 'null') imageUrl = null; // Limpiar string "null" accidental
@@ -693,6 +694,12 @@ class MiDespensa {
             inCart: true,
             imageUrl: imageUrl || null,
             notes: notes || '',
+            barcode: metadata.barcode || '',
+            metadata: {
+                brand: metadata.brand || '',
+                weight: metadata.weight || '',
+                unit: metadata.unit || ''
+            },
             createdAt: new Date(),
         };
 
@@ -940,6 +947,9 @@ class MiDespensa {
         }
         if (tab === 'dashboard') {
             this.renderDashboard();
+        }
+        if (tab === 'supermarkets') {
+            this.renderSupermarkets();
         }
     }
 
@@ -1275,7 +1285,15 @@ class MiDespensa {
     async addFromOFFResults(index) {
         const p = this.offSearchResults[index];
         if (!p) return;
-        await this.addShoppingItem(p.name, p.category, p.imageUrl, p.notes);
+
+        const metadata = {
+            brand: p.brand,
+            weight: p.weight,
+            barcode: p.barcode,
+            unit: p.unit
+        };
+
+        await this.addShoppingItem(p.name, p.category, p.imageUrl, p.notes, metadata);
 
         // Limpiar el buscador para ver la lista completa actualizada
         this.shoppingSearch = '';
@@ -1297,7 +1315,11 @@ class MiDespensa {
                 name: p.product_name || p.generic_name || 'Producto desconocido',
                 imageUrl: p.image_small_url || null,
                 category: this.mapFoodFactsCategory(p.categories_tags || []),
-                notes: p.brands ? `Marca: ${p.brands}` : ''
+                notes: p.brands ? `Marca: ${p.brands}` : '',
+                brand: p.brands || '',
+                barcode: p.code || '',
+                weight: p.quantity || '',
+                unit: this.extractQuantity(p.quantity || '')?.unit || ''
             }));
             
             this.renderShoppingList();
@@ -1562,6 +1584,7 @@ class MiDespensa {
         this.renderInventory();
         this.renderNotes();
         this.renderShoppingList();
+        this.renderSupermarkets();
     }
 
     renderDashboard() {
@@ -1732,16 +1755,28 @@ class MiDespensa {
         // Inyectar buscador si no existe (Mejora para listas largas)
         if (container && !document.getElementById('shoppingSearchInput')) {
             const searchDiv = document.createElement('div');
-            searchDiv.className = 'search-bar';
+            searchDiv.style.display = 'flex';
+            searchDiv.style.gap = '0.5rem';
             searchDiv.style.marginBottom = '1rem';
+            searchDiv.style.alignItems = 'center';
+            
             searchDiv.innerHTML = `
-                <i class="fas fa-search"></i>
-                <input type="text" id="shoppingSearchInput" placeholder="Buscar en el catálogo..." value="${this.shoppingSearch}">
+                <div class="search-bar" style="margin-bottom: 0; flex: 1; padding: 0 0.5rem;">
+                    <i class="fas fa-search" style="font-size: 0.8rem;"></i>
+                    <input type="text" id="shoppingSearchInput" placeholder="Catálogo..." value="${this.shoppingSearch}" style="padding: 0.5rem 0; font-size: 0.9rem;">
+                </div>
+                <button class="btn btn-secondary btn-small" id="comparePricesBtn" style="padding: 0.5rem 0.8rem; font-size: 0.85rem; white-space: nowrap;">
+                    <i class="fas fa-balance-scale"></i> Comparar
+                </button>
             `;
             container.insertBefore(searchDiv, list);
+            
             document.getElementById('shoppingSearchInput').addEventListener('input', (e) => {
                 this.shoppingSearch = e.target.value;
                 this.renderShoppingList();
+            });
+            document.getElementById('comparePricesBtn').addEventListener('click', () => {
+                this.switchTab('supermarkets');
             });
         }
         
@@ -1842,7 +1877,9 @@ class MiDespensa {
                         `<button class="product-btn" onclick="app.addFromOFFResults(${index});" style="color: var(--primary);" title="Descargar al catálogo"><i class="fas fa-cloud-download-alt"></i></button>`
                     }
                     ${p.imageUrl ? `<img src="${p.imageUrl}" style="width: 30px; height: 30px; border-radius: 4px; object-fit: cover;" onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')">` : ''}
-                    <label style="color: var(--gray-dark); font-weight: normal; font-size: 0.9rem; cursor: pointer;" onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')">${p.name} ${localMatch ? '<small style="color: var(--gray);">(en catálogo)</small>' : ''}</label>
+                <label style="color: var(--gray-dark); font-weight: normal; font-size: 0.9rem; cursor: pointer;" onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')">
+                    ${p.name} <small style="color: var(--gray);">${p.brand ? '[' + p.brand + ']' : ''} ${p.weight || ''}</small>
+                </label>
                 </div>
             `;}).join('');
         } else if (this.shoppingSearch.length >= 3) {
@@ -1871,7 +1908,11 @@ class MiDespensa {
                         `<button class="product-btn" onclick="app.toggleInCart('${item.id}', true);" style="color: var(--success);" title="Añadir al carrito"><i class="fas fa-cart-plus"></i></button>`
                     )
                 }
-                <label for="item-${item.id}" style="${!isInCart ? 'color: var(--gray); font-weight: normal; cursor: pointer;' : ''}" ${!isInCart ? `onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')"` : ''}>${item.name}</label>
+                <label for="item-${item.id}" style="${!isInCart ? 'color: var(--gray); font-weight: normal; cursor: pointer;' : ''}" ${!isInCart ? `onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')"` : ''}>
+                    ${item.name}
+                    ${item.metadata && (item.metadata.brand || item.metadata.weight) ? 
+                        `<div style="font-size: 0.7rem; opacity: 0.7;">${item.metadata.brand} ${item.metadata.weight}</div>` : ''}
+                </label>
                 <div class="product-actions">
                     ${isInCart ? 
                         `<button class="delete-btn" onclick="app.toggleInCart('${item.id}', false);" title="Quitar del carrito"><i class="fas fa-minus-square"></i></button>` :
@@ -1879,6 +1920,265 @@ class MiDespensa {
                     }
                 </div>
             </div>`;
+    }
+    
+    // ============ COMPARISON ENGINE ============
+    async compareAllSupermarkets() {
+        const shoppingItems = this.shoppingList.filter(i => i.inCart);
+        if (shoppingItems.length === 0) {
+            alert("Añade productos al carrito primero.");
+            return;
+        }
+
+        const supers = ['Mercadona', 'Carrefour', 'Alcampo', 'Aldi', 'AhorraMás', 'Dia'];
+        this.renderComparisonLoading("Calculando la mejor opción entre todos los supermercados...");
+        
+        document.getElementById('supermarketsList').style.display = 'none';
+        document.getElementById('globalCompareActions').style.display = 'none';
+        document.getElementById('comparisonResults').style.display = 'block';
+        document.getElementById('comparisonTableResults').style.display = 'none';
+        document.getElementById('backToSupersBtn').style.display = 'flex';
+
+        // Simulamos peticiones en paralelo a todos los conectores
+        const results = await Promise.all(supers.map(async (name) => {
+            const data = await this.mockFetchSupermarketPrices(name, shoppingItems);
+            return { name, ...data };
+        }));
+
+        // Encontrar el más barato
+        const winner = results.reduce((min, curr) => parseFloat(curr.total) < parseFloat(min.total) ? curr : min, results[0]);
+        
+        this.selectedSupermarket = winner.name;
+        document.getElementById('supermarketViewTitle').textContent = `🏆 El más barato: ${winner.name}`;
+        document.getElementById('savingsBadge').style.display = 'block';
+        this.renderComparisonResults(winner);
+    }
+
+    async selectSupermarket(name) {
+        this.selectedSupermarket = name;
+        const list = document.getElementById('supermarketsList');
+        const results = document.getElementById('comparisonResults');
+        const title = document.getElementById('supermarketViewTitle');
+        const backBtn = document.getElementById('backToSupersBtn');
+        const globalActions = document.getElementById('globalCompareActions');
+        const shoppingItems = this.shoppingList.filter(i => i.inCart);
+
+        if (shoppingItems.length === 0) {
+            alert("Tu carrito está vacío. Añade productos para comparar precios.");
+            return;
+        }
+
+        list.style.display = 'none';
+        globalActions.style.display = 'none';
+        results.style.display = 'block';
+        backBtn.style.display = 'flex';
+        document.getElementById('comparisonTableResults').style.display = 'none';
+        document.getElementById('savingsBadge').style.display = 'none';
+        title.textContent = `Precios en ${name}`;
+
+        this.renderComparisonLoading();
+        
+        const data = await this.mockFetchSupermarketPrices(name, shoppingItems);
+        this.renderComparisonResults(data);
+    }
+
+    async compareAllSupermarketsTable() {
+        const shoppingItems = this.shoppingList.filter(i => i.inCart);
+        if (shoppingItems.length === 0) {
+            alert("Añade productos al carrito primero.");
+            return;
+        }
+
+        const supers = ['Mercadona', 'Carrefour', 'Alcampo', 'Aldi', 'AhorraMás', 'Dia'];
+        
+        document.getElementById('supermarketsList').style.display = 'none';
+        document.getElementById('globalCompareActions').style.display = 'none';
+        document.getElementById('comparisonResults').style.display = 'none';
+        document.getElementById('comparisonTableResults').style.display = 'block';
+        document.getElementById('backToSupersBtn').style.display = 'flex';
+        document.getElementById('supermarketViewTitle').textContent = '📊 Tabla Comparativa';
+
+        const tableContainer = document.getElementById('comparisonTableResults');
+        tableContainer.innerHTML = `<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Generando tabla comparativa...</p></div>`;
+
+        // Peticiones en paralelo para obtener todos los precios
+        const results = await Promise.all(supers.map(async (name) => {
+            const data = await this.mockFetchSupermarketPrices(name, shoppingItems);
+            return { name, items: data.items };
+        }));
+
+        this.renderComparisonTable(results, shoppingItems);
+    }
+
+    renderComparisonTable(results, shoppingItems) {
+        const tableContainer = document.getElementById('comparisonTableResults');
+        
+        let html = `
+            <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; font-size: 0.85rem; min-width: 600px;">
+                <thead>
+                    <tr style="background: var(--light); text-align: left;">
+                        <th style="padding: 0.75rem; border-bottom: 2px solid var(--gray-light); position: sticky; left: 0; background: var(--light); z-index: 1;">Producto</th>
+                        ${results.map(r => `<th style="padding: 0.75rem; border-bottom: 2px solid var(--gray-light); text-align: center;">${r.name}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        shoppingItems.forEach((item, index) => {
+            // Encontrar el precio mínimo para este producto en todos los supermercados para resaltar la celda
+            const prices = results.map(r => parseFloat(r.items[index].price));
+            const minPrice = Math.min(...prices);
+
+            const escapedName = (item.name || '').replace(/'/g, "\\'");
+            const escapedNotes = (item.notes || '').replace(/'/g, "\\'");
+            const escapedImg = (item.imageUrl || '').replace(/'/g, "\\'");
+
+            html += `
+                <tr style="border-bottom: 1px solid var(--gray-light);">
+                    <td style="padding: 0.75rem; font-weight: 600; position: sticky; left: 0; background: white; z-index: 1; border-right: 1px solid var(--gray-light); cursor: pointer;" title="Ver vista previa" onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')">
+                        ${item.name}
+                        <div style="font-size: 0.7rem; font-weight: normal; color: var(--gray);">${item.metadata?.brand || ''}</div>
+                    </td>
+                    ${results.map(r => {
+                        const priceStr = r.items[index].price;
+                        const isBestPrice = parseFloat(priceStr) === minPrice;
+                        const highlightStyle = isBestPrice ? 'background-color: #dcfce7; color: #166534; font-weight: 700;' : 'color: var(--primary);';
+                        return `<td style="padding: 0.75rem; text-align: center; ${highlightStyle}">${priceStr}</td>`;
+                    }).join('')}
+                </tr>
+            `;
+        });
+
+        // Calcular los totales de cada supermercado para la fila final
+        const supermarketTotals = results.map(r => 
+            r.items.reduce((sum, item) => sum + parseFloat(item.price), 0)
+        );
+        const minTotal = Math.min(...supermarketTotals);
+
+        html += `
+                </tbody>
+                <tfoot>
+                    <tr style="background: var(--light); font-weight: bold; border-top: 2px solid var(--gray-light);">
+                        <td style="padding: 0.75rem; position: sticky; left: 0; background: var(--light); z-index: 1; border-right: 1px solid var(--gray-light);">TOTAL COMPRA</td>
+                        ${results.map((r, i) => {
+                            const total = supermarketTotals[i];
+                            const isBestTotal = total === minTotal;
+                            const highlightStyle = isBestTotal ? 'background-color: #dcfce7; color: #166534;' : 'color: var(--secondary);';
+                            return `<td style="padding: 0.75rem; text-align: center; font-size: 1rem; ${highlightStyle}">${total.toFixed(2)} €</td>`;
+                        }).join('')}
+                    </tr>
+                </tfoot>
+            </table>
+        `;
+        tableContainer.innerHTML = html;
+    }
+
+    resetSupermarketView() {
+        this.selectedSupermarket = null;
+        document.getElementById('supermarketsList').style.display = 'grid';
+        document.getElementById('globalCompareActions').style.display = 'flex';
+        document.getElementById('comparisonResults').style.display = 'none';
+        document.getElementById('comparisonTableResults').style.display = 'none';
+        document.getElementById('backToSupersBtn').style.display = 'none';
+        document.getElementById('supermarketViewTitle').textContent = '🛒 Comparativa de Precios';
+    }
+
+    async mockFetchSupermarketPrices(supermarket, items) {
+        // Aquí es donde harías el fetch a tu API propia con el Normalizer
+        // await fetch(`/api/v1/compare/${supermarket}`, { method: 'POST', body: JSON.stringify(items) });
+        
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        let total = 0;
+        const processedItems = items.map(item => {
+            // Lógica de matching mejorada:
+            let confidence = 50; // Base
+            if (item.barcode) confidence = 100;
+            else if (item.metadata?.brand && item.metadata?.weight) confidence = 90;
+            else if (item.metadata?.brand) confidence = 75;
+
+            // El precio base depende de si es marca reconocida (según metadata) o blanca
+            const isPremium = item.metadata?.brand && !item.metadata.brand.toLowerCase().includes('hacendado');
+            const basePrice = isPremium ? 2.8 : 1.1;
+            const variance = Math.random() * 0.5;
+            const price = basePrice + variance;
+            
+            total += price;
+            
+            return {
+                ...item,
+                price: price.toFixed(2) + " €",
+                matchConfidence: confidence,
+                found: true
+            };
+        });
+
+        return { total: total.toFixed(2), items: processedItems };
+    }
+
+    renderComparisonLoading(message) {
+        const container = document.getElementById('comparisonList');
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: var(--secondary);"></i>
+                <p>${message || 'Consultando catálogo de ' + this.selectedSupermarket + '...'}</p>
+            </div>`;
+    }
+
+    renderComparisonResults(data) {
+        const container = document.getElementById('comparisonList');
+        const totalEl = document.getElementById('supermarketTotal');
+        
+        totalEl.innerHTML = `Total en <strong>${this.selectedSupermarket}</strong>: <span style="color: var(--secondary); font-size: 1.4rem;">${data.total}€</span>`;
+
+        container.innerHTML = data.items.map(item => `
+            <div class="shopping-item">
+                <div style="flex: 1;">
+                    <div style="font-weight: 600;">${item.name} 
+                        <span style="font-size: 0.75rem; font-weight: normal; color: var(--gray);">
+                            ${item.metadata?.brand ? '(' + item.metadata.brand + ')' : ''} ${item.metadata?.weight || ''}
+                        </span>
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--gray);">
+                        ${item.barcode ? `<span><i class="fas fa-barcode"></i> ${item.barcode}</span>` : 'Matching por Atributos'}
+                        <span style="margin-left: 10px; color: ${item.matchConfidence === 100 ? 'var(--success)' : 'var(--warning)'}">
+                            <i class="fas fa-check-circle"></i> Confianza: ${item.matchConfidence}%
+                        </span>
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-weight: bold; color: var(--primary);">${item.price}</div>
+                    <div style="font-size: 0.7rem; color: var(--gray);">Est.</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    renderSupermarkets() {
+        const list = document.getElementById('supermarketsList');
+        if (!list) return;
+
+        const supers = ['Mercadona', 'Carrefour', 'Alcampo', 'Aldi', 'AhorraMás', 'Dia'];
+        const colors = {
+            'Mercadona': '#00a650',
+            'Carrefour': '#003896',
+            'Alcampo': '#da291c',
+            'Aldi': '#002855',
+            'AhorraMás': '#f39200',
+            'Dia': '#e1001a'
+        };
+        
+        list.innerHTML = supers.map(name => `
+            <div class="category-item" 
+                 onclick="app.selectSupermarket('${name}')" 
+                 style="border: 1px solid var(--gray-light); transition: transform 0.2s;">
+                <span class="category-icon" style="color: ${colors[name] || 'var(--primary)'};">
+                    <i class="fas fa-store"></i>
+                </span>
+                <div class="category-name">${name}</div>
+                <div class="category-count" style="color: var(--gray); font-weight: bold;">Comparar lista</div>
+            </div>
+        `).join('');
     }
 }
 
