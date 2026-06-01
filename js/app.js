@@ -707,7 +707,19 @@ class MiDespensa {
             // Verificar si el item ya existe en el catálogo para no duplicar
             const existing = this.shoppingList.find(i => i.name.toLowerCase() === name.trim().toLowerCase());
             if (existing) {
-                await this.toggleInCart(existing.id, true);
+                // Actualizar el item existente con la nueva información si viene de una búsqueda enriquecida
+                const updates = { inCart: true, completed: false };
+                if (metadata.barcode && !existing.barcode) updates.barcode = metadata.barcode;
+                if (imageUrl && !existing.imageUrl) updates.imageUrl = imageUrl;
+                if (metadata.brand || metadata.weight) {
+                    updates.metadata = {
+                        brand: metadata.brand || (existing.metadata?.brand || ''),
+                        weight: metadata.weight || (existing.metadata?.weight || ''),
+                        unit: metadata.unit || (existing.metadata?.unit || '')
+                    };
+                }
+                
+                await this.db.collection('shoppingList').doc(existing.id).update(updates);
             } else {
                 await this.db.collection('shoppingList').add(item);
             }
@@ -1872,10 +1884,9 @@ class MiDespensa {
 
                 return `
                 <div class="shopping-item">
-                    ${localMatch ? 
-                        `<button class="product-btn" onclick="app.toggleInCart('${localMatch.id}', true);" style="color: var(--success);" title="En catálogo. Añadir al carrito"><i class="fas fa-cart-plus"></i></button>` :
-                        `<button class="product-btn" onclick="app.addFromOFFResults(${index});" style="color: var(--primary);" title="Descargar al catálogo"><i class="fas fa-cloud-download-alt"></i></button>`
-                    }
+                    <button class="product-btn" onclick="app.addFromOFFResults(${index});" style="color: ${localMatch ? 'var(--success)' : 'var(--primary)'};" title="${localMatch ? 'Actualizar y añadir al carrito' : 'Descargar al catálogo'}">
+                        <i class="fas ${localMatch ? 'fa-cart-plus' : 'fa-cloud-download-alt'}"></i>
+                    </button>
                     ${p.imageUrl ? `<img src="${p.imageUrl}" style="width: 30px; height: 30px; border-radius: 4px; object-fit: cover;" onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')">` : ''}
                 <label style="color: var(--gray-dark); font-weight: normal; font-size: 0.9rem; cursor: pointer;" onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')">
                     ${p.name} <small style="color: var(--gray);">${p.brand ? '[' + p.brand + ']' : ''} ${p.weight || ''}</small>
@@ -2025,8 +2036,8 @@ class MiDespensa {
         `;
 
         shoppingItems.forEach((item, index) => {
-            // Encontrar el precio mínimo para este producto en todos los supermercados para resaltar la celda
-            const prices = results.map(r => parseFloat(r.items[index].price));
+            // Encontrar el precio mínimo ignorando los N/D
+            const prices = results.map(r => parseFloat(r.items[index].price)).filter(p => !isNaN(p));
             const minPrice = Math.min(...prices);
 
             const escapedName = (item.name || '').replace(/'/g, "\\'");
@@ -2051,7 +2062,11 @@ class MiDespensa {
 
         // Calcular los totales de cada supermercado para la fila final
         const supermarketTotals = results.map(r => 
-            r.items.reduce((sum, item) => sum + parseFloat(item.price), 0)
+            r.items.reduce((sum, item) => {
+                const p = parseFloat(item.price);
+                if (isNaN(p)) return sum;
+                return sum + p;
+            }, 0)
         );
         const minTotal = Math.min(...supermarketTotals);
 
@@ -2084,11 +2099,128 @@ class MiDespensa {
     }
 
     async mockFetchSupermarketPrices(supermarket, items) {
-        // Aquí es donde harías el fetch a tu API propia con el Normalizer
-        // await fetch(`/api/v1/compare/${supermarket}`, { method: 'POST', body: JSON.stringify(items) });
-        
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
+        // Si es Carrefour, intentamos una búsqueda real a través de un proxy
+        if (supermarket === 'Carrefour') {
+            return await this.fetchCarrefourPrices(items);
+        }
+
+        // Para el resto, mantenemos la simulación por ahora
+        await new Promise(resolve => setTimeout(resolve, 300));
+        return this.generateSimulatedPrices(supermarket, items);
+    }
+
+    async fetchCarrefourPrices(items) {
+        const processedItems = [];
+        let total = 0;
+
+        const isHtmlResponse = (text) => /<\/?html|<!doctype|cloudflare|captcha/i.test(text);
+
+        const createLocalProxyUrl = (apiUrl) => {
+            try {
+                const url = new URL(apiUrl);
+                return `http://127.0.0.1:3000/carrefour?q=${encodeURIComponent(url.searchParams.get('q') || '')}&rows=${encodeURIComponent(url.searchParams.get('rows') || '1')}`;
+            } catch (err) {
+                return null;
+            }
+        };
+
+        const proxyUrls = [
+            (url) => createLocalProxyUrl(url),
+            (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+        ];
+
+        const fetchCarrefourJson = async (apiUrl) => {
+            let lastError = null;
+
+            for (const buildProxyUrl of proxyUrls) {
+                const proxyUrl = buildProxyUrl(apiUrl);
+                if (!proxyUrl) continue;
+                try {
+                    const response = await fetch(proxyUrl);
+                    if (!response.ok) {
+                        lastError = new Error(`Proxy HTTP ${response.status} ${response.statusText}`);
+                        console.warn('Carrefour proxy fallido:', proxyUrl, response.status, response.statusText);
+                        continue;
+                    }
+
+                    let text = await response.text();
+                    if (isHtmlResponse(text)) {
+                        lastError = new Error('Respuesta HTML/Cloudflare en vez de JSON');
+                        console.warn('Carrefour proxy devolvió HTML en vez de JSON:', proxyUrl);
+                        continue;
+                    }
+
+                    if (text.trim().startsWith('{') && text.includes('"contents"')) {
+                        const wrapper = JSON.parse(text);
+                        if (wrapper && typeof wrapper.contents === 'string') {
+                            text = wrapper.contents;
+                        }
+                    }
+
+                    return JSON.parse(text);
+                } catch (error) {
+                    lastError = error;
+                    console.warn('Carrefour proxy excepción:', proxyUrl, error.message);
+                }
+            }
+
+            throw lastError || new Error('No se pudo obtener JSON de Carrefour');
+        };
+
+        for (const item of items) {
+            let foundData = null;
+            const searchQueries = [];
+            if (item.barcode) searchQueries.push(item.barcode);
+            searchQueries.push(`${item.name} ${item.metadata?.brand || ''}`.trim());
+
+            for (const query of searchQueries) {
+                if (foundData) break;
+
+                try {
+                    const apiUrl = `https://www.carrefour.es/global-api/v1/search-service/queries?q=${encodeURIComponent(query)}&rows=1`;
+                    const data = await fetchCarrefourJson(apiUrl);
+                    const result = data.search?.results?.[0];
+
+                    if (result?.items?.length > 0) {
+                        const firstItem = result.items[0];
+                        const price = parseFloat(firstItem.price);
+
+                        if (!isNaN(price)) {
+                            total += price;
+                            foundData = {
+                                ...item,
+                                price: price.toFixed(2) + ' €',
+                                matchConfidence: (item.barcode && item.barcode === firstItem.ean) ? 100 : 85,
+                                found: true,
+                                url: `https://www.carrefour.es${result.url}`
+                            };
+                        }
+                    } else {
+                        console.log(`Carrefour: No hay resultados para "${query}"`);
+                    }
+                } catch (error) {
+                    console.error(`Carrefour: fallo al buscar "${query}":`, error.message);
+                }
+            }
+
+            if (foundData) {
+                processedItems.push(foundData);
+            } else {
+                processedItems.push({
+                    ...item,
+                    price: 'N/D',
+                    matchConfidence: 0,
+                    found: false
+                });
+            }
+
+            await new Promise(r => setTimeout(r, 3000)); // Aumentamos a 3 segundos para ser más cautelosos
+        }
+
+        return { total: total.toFixed(2), items: processedItems };
+    }
+
+    generateSimulatedPrices(supermarket, items) {
         let total = 0;
         const processedItems = items.map(item => {
             // Lógica de matching mejorada:
@@ -2099,7 +2231,7 @@ class MiDespensa {
 
             // El precio base depende de si es marca reconocida (según metadata) o blanca
             const isPremium = item.metadata?.brand && !item.metadata.brand.toLowerCase().includes('hacendado');
-            const basePrice = isPremium ? 2.8 : 1.1;
+            const basePrice = isPremium ? 2.5 : 0.9;
             const variance = Math.random() * 0.5;
             const price = basePrice + variance;
             
