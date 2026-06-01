@@ -44,10 +44,6 @@
                 <i class="fas fa-shopping-bag"></i>
                 <span>Compra</span>
             </button>
-            <button class="nav-tab" data-tab="supermarkets">
-                <i class="fas fa-store"></i>
-                <span>Súper</span>
-            </button>
         </nav>
 
         <!-- Main Content -->
@@ -179,53 +175,6 @@
                 </div>
             </section>
 
-            <!-- SUPERMARKETS -->
-            <section id="supermarkets" class="screen">
-                <div class="shopping-container">
-                    <div class="section">
-                        <h2 id="supermarketViewTitle">🛒 Comparativa de Precios</h2>
-                        
-                        <!-- Acción Global -->
-                        <div id="globalCompareActions" style="margin-bottom: 1.5rem; display: flex; gap: 0.5rem;">
-                            <button class="btn btn-primary" style="flex: 1; background: linear-gradient(135deg, #2563eb, #7c3aed);" onclick="app.compareAllSupermarkets()">
-                                <i class="fas fa-bolt"></i> Super + Barato
-                            </button>
-                            <button class="btn btn-secondary" style="flex: 1;" onclick="app.compareAllSupermarketsTable()">
-                                <i class="fas fa-table"></i> Tabla Precios
-                            </button>
-                        </div>
-
-                        <!-- Selector de Supermercados -->
-                        <div id="supermarketsList" class="category-grid">
-                            <!-- Tarjetas de supermercados se llenan dinámicamente -->
-                        </div>
-
-                        <!-- Resultados de la comparativa -->
-                        <div id="comparisonResults" style="display: none; margin-top: 1.5rem;">
-                            <div id="supermarketTotal" class="inventory-status" style="background: var(--light); color: var(--primary); text-align: center; font-size: 1.2rem; margin-bottom: 1rem;">
-                                Total estimado: <strong>0.00€</strong>
-                            </div>
-                            <div id="savingsBadge" style="display: none; background: #ecfdf5; color: #059669; padding: 0.5rem; border-radius: 8px; text-align: center; margin-bottom: 1rem; font-weight: bold; border: 1px solid #10b981;">
-                                <i class="fas fa-piggy-bank"></i> ¡Esta es la opción más económica!
-                            </div>
-                            <div id="comparisonList" class="shopping-list">
-                                <!-- Items con precios -->
-                            </div>
-                        </div>
-
-                        <!-- Resultados de la tabla -->
-                        <div id="comparisonTableResults" style="display: none; margin-top: 1.5rem; overflow-x: auto;">
-                            <!-- Aquí se inyectará la tabla -->
-                        </div>
-                    </div>
-
-                    <div class="modal-buttons" style="padding: 0 1rem;" id="supermarketNavButtons">
-                        <button class="btn btn-secondary" id="backToSupersBtn" style="display: none;" onclick="app.resetSupermarketView()">
-                            <i class="fas fa-arrow-left"></i> Volver a Compra
-                        </button>
-                    </div>
-                </div>
-            </section>
         </main>
 
         <!-- MODAL: Agregar/Editar Producto -->

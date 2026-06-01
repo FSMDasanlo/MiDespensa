@@ -38,7 +38,7 @@ class MiDespensa {
         this.currentInventoryFilterType = 'all';
         this.currentInventoryFilterValue = null;
         this.shoppingSearch = '';
-        this.selectedSupermarket = null;
+        this.hideCatalog = false;
         this.db = null;
         this.hasInteracted = false;
         this.init();
@@ -1596,7 +1596,6 @@ class MiDespensa {
         this.renderInventory();
         this.renderNotes();
         this.renderShoppingList();
-        this.renderSupermarkets();
     }
 
     renderDashboard() {
@@ -1775,10 +1774,10 @@ class MiDespensa {
             searchDiv.innerHTML = `
                 <div class="search-bar" style="margin-bottom: 0; flex: 1; padding: 0 0.5rem;">
                     <i class="fas fa-search" style="font-size: 0.8rem;"></i>
-                    <input type="text" id="shoppingSearchInput" placeholder="Catálogo..." value="${this.shoppingSearch}" style="padding: 0.5rem 0; font-size: 0.9rem;">
+                    <input type="text" id="shoppingSearchInput" placeholder="Buscar..." value="${this.shoppingSearch}" style="padding: 0.5rem 0; font-size: 0.9rem;">
                 </div>
-                <button class="btn btn-secondary btn-small" id="comparePricesBtn" style="padding: 0.5rem 0.8rem; font-size: 0.85rem; white-space: nowrap;">
-                    <i class="fas fa-balance-scale"></i> Comparar
+                <button class="btn btn-secondary btn-small" id="toggleCatalogBtn">
+                    <i class="fas fa-eye-slash"></i>
                 </button>
             `;
             container.insertBefore(searchDiv, list);
@@ -1787,8 +1786,9 @@ class MiDespensa {
                 this.shoppingSearch = e.target.value;
                 this.renderShoppingList();
             });
-            document.getElementById('comparePricesBtn').addEventListener('click', () => {
-                this.switchTab('supermarkets');
+            document.getElementById('toggleCatalogBtn').addEventListener('click', () => {
+                this.hideCatalog = !this.hideCatalog;
+                this.renderShoppingList();
             });
         }
         
@@ -1800,6 +1800,13 @@ class MiDespensa {
             statusDiv.style.color = 'var(--primary)';
             statusDiv.style.textAlign = 'center';
             container.insertBefore(statusDiv, list);
+        }
+
+        const toggleBtn = document.getElementById('toggleCatalogBtn');
+        if (toggleBtn) {
+            toggleBtn.className = `btn ${this.hideCatalog ? 'btn-primary' : 'btn-secondary'} btn-small`;
+            toggleBtn.innerHTML = `<i class="fas ${this.hideCatalog ? 'fa-eye' : 'fa-eye-slash'}"></i>`;
+            toggleBtn.title = this.hideCatalog ? 'Mostrar catálogo' : 'Modo compra (ocultar catálogo)';
         }
 
         clearBtn.style.display = 'block';
@@ -1858,20 +1865,20 @@ class MiDespensa {
             });
         }
 
-        // 2. SECCIÓN: COMPRADO
+        // 2. SECCIÓN: CATÁLOGO LOCAL / BASE
+        if (!this.hideCatalog && catalog.length > 0) {
+            html += `<div class="shopping-category-header" style="background: #f1f3f5; color: #495057;">📁 Catálogo (Añadir al carrito)</div>`;
+            html += catalog.map(item => this.renderShoppingItemRow(item, false)).join('');
+        }
+
+        // 3. SECCIÓN: COMPRADO
         if (completed.length > 0) {
             html += `<div class="shopping-category-header" style="background: #ebfbee; color: #2b8a3e;">✅ Comprado</div>`;
             html += completed.map(item => this.renderShoppingItemRow(item, true)).join('');
         }
 
-        // 3. SECCIÓN: CATÁLOGO LOCAL / BASE
-        if (catalog.length > 0) {
-            html += `<div class="shopping-category-header" style="background: #f1f3f5; color: #495057;">📁 Catálogo (Añadir al carrito)</div>`;
-            html += catalog.map(item => this.renderShoppingItemRow(item, false)).join('');
-        }
-
         // 4. SECCIÓN: RESULTADOS DE OPEN FOOD FACTS (Internet)
-        if (this.offSearchResults.length > 0) {
+        if (!this.hideCatalog && this.offSearchResults.length > 0) {
             html += `<div class="shopping-category-header" style="background: #e7f5ff; color: #1971c2;">🌍 Resultados en Internet</div>`;
             html += this.offSearchResults.map((p, index) => {
                 const localMatch = this.shoppingList.find(i => i.name.toLowerCase() === p.name.toLowerCase());
@@ -1893,7 +1900,7 @@ class MiDespensa {
                 </label>
                 </div>
             `;}).join('');
-        } else if (this.shoppingSearch.length >= 3) {
+        } else if (!this.hideCatalog && this.shoppingSearch.length >= 3) {
             html += `<div style="padding: 1rem; text-align: center;">
                 <button class="btn btn-secondary btn-small" onclick="app.searchOpenFoodFacts('${this.shoppingSearch.replace(/'/g, "\\'")}');">
                     <i class="fas fa-search"></i> Buscar "${this.shoppingSearch}" en internet
@@ -1910,7 +1917,7 @@ class MiDespensa {
         const escapedImg = (item.imageUrl || '').replace(/'/g, "\\'");
 
         return `
-            <div class="shopping-item" style="${!isInCart && item.inCart ? 'opacity: 0.5;' : ''}">
+            <div class="shopping-item ${isInCart ? 'in-cart-item' : ''}" style="${!isInCart && item.inCart ? 'opacity: 0.5;' : ''}">
                 ${item.imageUrl ? `<img src="${item.imageUrl}" style="width: 30px; height: 30px; border-radius: 4px; object-fit: cover; opacity: ${item.completed ? '0.5' : '1'}" onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')">` : ''}
                 ${isInCart ? 
                     `<input type="checkbox" id="item-${item.id}" ${item.completed ? 'checked' : ''} onchange="app.toggleShoppingItem('${item.id}');">` :
@@ -1926,7 +1933,7 @@ class MiDespensa {
                 </label>
                 <div class="product-actions">
                     ${isInCart ? 
-                        `<button class="delete-btn" onclick="app.toggleInCart('${item.id}', false);" title="Quitar del carrito"><i class="fas fa-minus-square"></i></button>` :
+                        `<button class="delete-btn" style="color: var(--warning);" onclick="app.toggleInCart('${item.id}', false);" title="Quitar del carrito"><i class="fas fa-minus-square"></i></button>` :
                         `<button class="delete-btn" onclick="app.deleteShoppingItem('${item.id}');" title="Eliminar del catálogo"><i class="fas fa-trash"></i></button>`
                     }
                 </div>
@@ -2189,63 +2196,11 @@ class MiDespensa {
     async fetchCarrefourPrices(items) {
         const processedItems = [];
         let total = 0;
-
-        const isHtmlResponse = (text) => /<\/?html|<!doctype|cloudflare|captcha/i.test(text);
-
-        const createLocalProxyUrl = (apiUrl) => {
-            try {
-                const url = new URL(apiUrl);
-                return `http://127.0.0.1:3000/carrefour?q=${encodeURIComponent(url.searchParams.get('q') || '')}&rows=${encodeURIComponent(url.searchParams.get('rows') || '1')}`;
-            } catch (err) {
-                return null;
-            }
-        };
-
-        const proxyUrls = [
-            (url) => createLocalProxyUrl(url),
-            (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
-        ];
-
-        const fetchCarrefourJson = async (apiUrl) => {
-            let lastError = null;
-
-            for (const buildProxyUrl of proxyUrls) {
-                const proxyUrl = buildProxyUrl(apiUrl);
-                if (!proxyUrl) continue;
-                try {
-                    const response = await fetch(proxyUrl);
-                    if (!response.ok) {
-                        lastError = new Error(`Proxy HTTP ${response.status} ${response.statusText}`);
-                        console.warn('Carrefour proxy fallido:', proxyUrl, response.status, response.statusText);
-                        continue;
-                    }
-
-                    let text = await response.text();
-                    if (isHtmlResponse(text)) {
-                        lastError = new Error('Respuesta HTML/Cloudflare en vez de JSON');
-                        console.warn('Carrefour proxy devolvió HTML en vez de JSON:', proxyUrl);
-                        continue;
-                    }
-
-                    if (text.trim().startsWith('{') && text.includes('"contents"')) {
-                        const wrapper = JSON.parse(text);
-                        if (wrapper && typeof wrapper.contents === 'string') {
-                            text = wrapper.contents;
-                        }
-                    }
-
-                    return JSON.parse(text);
-                } catch (error) {
-                    lastError = error;
-                    console.warn('Carrefour proxy excepción:', proxyUrl, error.message);
-                }
-            }
-
-            throw lastError || new Error('No se pudo obtener JSON de Carrefour');
-        };
+        const PROXY_URL = 'http://127.0.0.1:3000/carrefour';
 
         for (const item of items) {
             let foundData = null;
+            // Definimos varios intentos: primero EAN, luego Nombre + Marca
             const searchQueries = [];
             if (item.barcode) searchQueries.push(item.barcode);
             searchQueries.push(`${item.name} ${item.metadata?.brand || ''}`.trim());
@@ -2254,44 +2209,40 @@ class MiDespensa {
                 if (foundData) break;
 
                 try {
-                    const apiUrl = `https://www.carrefour.es/global-api/v1/search-service/queries?q=${encodeURIComponent(query)}&rows=1`;
-                    const data = await fetchCarrefourJson(apiUrl);
-                    const result = data.search?.results?.[0];
+                    console.log(`[Carrefour] Consultando proxy para: ${query}`);
+                    const response = await fetch(`${PROXY_URL}?q=${encodeURIComponent(query)}`);
+                    
+                    if (!response.ok) continue; // Si falla esta búsqueda, probamos la siguiente
 
-                    if (result?.items?.length > 0) {
-                        const firstItem = result.items[0];
-                        const price = parseFloat(firstItem.price);
-
+                    const data = await response.json();
+                    
+                    if (data && data.precio) {
+                        const priceStr = data.precio.replace(/[^\d,.]/g, '').replace(',', '.');
+                        const price = parseFloat(priceStr);
+                        
                         if (!isNaN(price)) {
                             total += price;
                             foundData = {
                                 ...item,
                                 price: price.toFixed(2) + ' €',
-                                matchConfidence: (item.barcode && item.barcode === firstItem.ean) ? 100 : 85,
+                                matchConfidence: query === item.barcode ? 100 : 85,
                                 found: true,
-                                url: `https://www.carrefour.es${result.url}`
+                                url: data.url
                             };
                         }
-                    } else {
-                        console.log(`Carrefour: No hay resultados para "${query}"`);
                     }
                 } catch (error) {
-                    console.error(`Carrefour: fallo al buscar "${query}":`, error.message);
+                    console.warn(`[Carrefour] Error buscando "${query}":`, error.message);
                 }
             }
 
             if (foundData) {
                 processedItems.push(foundData);
             } else {
-                processedItems.push({
-                    ...item,
-                    price: 'N/D',
-                    matchConfidence: 0,
-                    found: false
-                });
+                processedItems.push({ ...item, price: 'N/D', matchConfidence: 0, found: false });
             }
 
-            await new Promise(r => setTimeout(r, 3000)); // Aumentamos a 3 segundos para ser más cautelosos
+            await new Promise(r => setTimeout(r, 1000)); // Delay corto entre productos
         }
 
         return { total: total.toFixed(2), items: processedItems };

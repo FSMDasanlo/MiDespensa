@@ -5,10 +5,9 @@
   "main": "import-datos.js",
   "scripts": {
     "import": "node import-datos.js --data=./datos.txt --serviceAccount=./serviceAccountKey.json",
-    "proxy": "node carrefour-proxy.js",
-    "proxy-mercadona": "node mercadona-proxy.js"
   },
   "dependencies": {
-    "firebase-admin": "^11.11.0"
+    "firebase-admin": "^11.11.0",
+    "playwright": "^1.60.0"
   }
 }

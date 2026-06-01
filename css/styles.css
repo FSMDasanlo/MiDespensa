@@ -551,6 +551,11 @@ body {
     gap: 1rem;
 }
 
+.shopping-item.in-cart-item {
+    background-color: #fffdf5;
+    border-left: 4px solid var(--secondary);
+}
+
 .shopping-item:last-child {
     border-bottom: none;
 }
