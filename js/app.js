@@ -2103,10 +2103,87 @@ class MiDespensa {
         if (supermarket === 'Carrefour') {
             return await this.fetchCarrefourPrices(items);
         }
+        if (supermarket === 'Mercadona') {
+            return await this.fetchMercadonaPrices(items);
+        }
 
         // Para el resto, mantenemos la simulación por ahora
         await new Promise(resolve => setTimeout(resolve, 300));
         return this.generateSimulatedPrices(supermarket, items);
+    }
+
+    async fetchMercadonaPrices(items) {
+        const processedItems = [];
+        let total = 0;
+
+        const fetchMercadonaJson = async (query) => {
+            const localProxyUrl = `http://127.0.0.1:3001/mercadona?q=${encodeURIComponent(query)}`;
+            const fallbackProxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://tienda.mercadona.es/api/v1/search/?query=${encodeURIComponent(query)}&limit=1`)}`;
+
+            try {
+                // Intentamos primero el proxy local
+                console.log(`Intentando proxy local para: ${query}`);
+                let response = await fetch(localProxyUrl).catch(() => null);
+
+                if (!response || !response.ok) {
+                    if (response) {
+                        const errorText = await response.text().catch(() => '');
+                        console.error(`Error ${response.status} del proxy:`, errorText.slice(0, 100));
+                    }
+                    console.warn(`Proxy local falló o no está iniciado. Intentando AllOrigins...`);
+                    // Si falla el local o no está arrancado, intentamos el público AllOrigins
+                    response = await fetch(fallbackProxyUrl).catch(() => null);
+                }
+
+                if (!response || !response.ok) {
+                    console.error(`Ambos proxies fallaron para: ${query}`);
+                    return null;
+                }
+
+                const contentType = response.headers.get("content-type");
+                if (contentType && contentType.includes("application/json")) {
+                    return await response.json();
+                } else {
+                    const textError = await response.text();
+                    console.error('La respuesta no es JSON. Posible bloqueo de Mercadona.', textError.slice(0, 100));
+                    return null;
+                }
+            } catch (err) {
+                console.error('Error en fetchMercadonaJson:', err);
+            }
+            return null;
+        };
+
+        for (const item of items) {
+            const query = item.barcode || item.name;
+            const data = await fetchMercadonaJson(query);
+            const result = data?.results?.[0] || data?.[0]; // Mercadona a veces devuelve array directo o envuelto
+
+            if (result && result.price_instructions) {
+                const price = parseFloat(result.price_instructions.unit_price);
+                console.log(`Precio encontrado para ${item.name}: ${price}€`);
+
+                if (!isNaN(price)) {
+                    total += price;
+                    processedItems.push({
+                        ...item,
+                        price: price.toFixed(2) + ' €',
+                        matchConfidence: (item.barcode && result.ean === item.barcode) ? 100 : 80,
+                        found: true
+                    });
+                } else {
+                    console.warn(`Precio no numérico para ${item.name}`);
+                    processedItems.push({ ...item, price: 'N/D', found: false });
+                }
+            } else {
+                console.warn(`No se encontraron resultados en Mercadona para: ${query}`);
+                processedItems.push({ ...item, price: 'N/D', found: false });
+            }
+            // Espera un poco más larga para no ser baneados rápidamente
+            await new Promise(r => setTimeout(r, 800));
+        }
+
+        return { total: total.toFixed(2), items: processedItems };
     }
 
     async fetchCarrefourPrices(items) {
