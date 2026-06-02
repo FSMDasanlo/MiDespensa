@@ -38,8 +38,10 @@ class MiDespensa {
         this.currentInventoryFilterType = 'all';
         this.currentInventoryFilterValue = null;
         this.shoppingSearch = '';
+        this.currentCatalogFilterType = 'all';
         this.hideCatalog = false;
         this.db = null;
+        this.scanContext = 'inventory'; // 'inventory' o 'catalog'
         this.hasInteracted = false;
         this.init();
     }
@@ -314,11 +316,21 @@ class MiDespensa {
         };
 
         try {
-            await this.db.collection('locations')
-                .doc(this.currentLocationId)
-                .collection('products')
-                .doc(firebaseId)
-                .update(product);
+            if (this.currentProduct?.isCatalog) {
+                // Si es del catálogo, actualizamos la colección master (shoppingList)
+                await this.db.collection('shoppingList').doc(firebaseId).update({
+                    name: data.name,
+                    category: data.category,
+                    barcode: data.barcode,
+                    notes: data.notes
+                });
+            } else {
+                await this.db.collection('locations')
+                    .doc(this.currentLocationId)
+                    .collection('products')
+                    .doc(firebaseId)
+                    .update(product);
+            }
             this.updateLocationTimestamp();
         } catch (error) {
             console.error('Error al actualizar producto:', error);
@@ -330,11 +342,15 @@ class MiDespensa {
         if (!this.firestoreEnabled || !this.db || !this.currentLocationId) return;
 
         try {
-            await this.db.collection('locations')
-                .doc(this.currentLocationId)
-                .collection('products')
-                .doc(firebaseId)
-                .delete();
+            if (this.currentProduct?.isCatalog) {
+                await this.db.collection('shoppingList').doc(firebaseId).delete();
+            } else {
+                await this.db.collection('locations')
+                    .doc(this.currentLocationId)
+                    .collection('products')
+                    .doc(firebaseId)
+                    .delete();
+            }
             this.updateLocationTimestamp();
         } catch (error) {
             console.error('Error al eliminar producto:', error);
@@ -349,6 +365,27 @@ class MiDespensa {
     consumeProduct(firebaseId) {
         this.deleteProduct(firebaseId);
         this.render();
+    }
+
+    addToInventoryFromCatalog(itemId) {
+        const item = this.shoppingList.find(i => i.id === itemId);
+        if (item) this.showProductModal({ ...item, quantity: 1, unit: item.metadata?.unit || 'unidad', expiryDate: '' });
+    }
+
+    showCatalogItemModal(itemId) {
+        const item = this.shoppingList.find(i => i.id === itemId);
+        if (!item) return;
+        
+        // Adaptamos el item del catálogo para que el modal de producto lo reconozca
+        this.showProductModal({
+            ...item,
+            firebaseId: item.id,
+            isCatalog: true,
+            location: 'pantry',
+            quantity: 1,
+            unit: item.metadata?.unit || 'unidad',
+            expiryDate: item.expiryDate || ''
+        });
     }
 
     // ============ LOCATIONS ============
@@ -860,12 +897,27 @@ class MiDespensa {
         });
 
         // Shopping List
-        document.getElementById('addShoppingBtn').addEventListener('click', () => this.addNewShoppingItem());
-        document.getElementById('newShoppingItem').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.addNewShoppingItem();
-        });
         document.getElementById('clearShoppingBtn').addEventListener('click', () => this.clearShoppingList());
         document.getElementById('shareWhatsAppBtn').addEventListener('click', () => this.shareShoppingListViaWhatsApp());
+
+        // Catalog
+        document.getElementById('addCatalogBtn')?.addEventListener('click', () => this.addNewCatalogItem());
+        document.getElementById('newCatalogItem')?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.addNewCatalogItem();
+        });
+        document.getElementById('scanCatalogBtn')?.addEventListener('click', () => this.openScanModal('catalog'));
+        document.getElementById('catalogSearchInput')?.addEventListener('input', () => {
+            this.renderCatalog();
+        });
+
+        document.querySelectorAll('#catalogFilterButtons .filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('#catalogFilterButtons .filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.currentCatalogFilterType = btn.dataset.filter;
+                this.renderCatalog();
+            });
+        });
 
         // Product Modal
         document.getElementById('closeModalBtn').addEventListener('click', () => this.closeProductModal());
@@ -951,6 +1003,9 @@ class MiDespensa {
         if (tab === 'shopping') {
             this.renderShoppingList();
         }
+        if (tab === 'catalog') {
+            this.renderCatalog();
+        }
         if (tab === 'notes') {
             this.renderNotes();
         }
@@ -1018,12 +1073,6 @@ class MiDespensa {
     closeProductModal() {
         document.getElementById('productModal').classList.remove('active');
         this.currentProduct = null;
-    }
-
-    openScanModal() {
-        const modal = document.getElementById('scanModal');
-        modal.classList.add('active');
-        this.startBarcodeScanner();
     }
 
     closeScanModal() {
@@ -1171,10 +1220,23 @@ class MiDespensa {
                 const data = await response.json();
 
                 if (data.status === 1 && data.product) {
-                    this.populateProductFieldsFromFoodFacts(data.product, barcode);
-                    this.playBeep();
-                    status.textContent = 'Producto encontrado!';
-                    this.closeScanModal();
+                    if (this.scanContext === 'inventory') {
+                        this.populateProductFieldsFromFoodFacts(data.product, barcode);
+                        this.playBeep();
+                        status.textContent = 'Producto encontrado!';
+                        this.closeScanModal();
+                    } else {
+                        // Contexto catálogo
+                        this.offSearchResults = [{
+                            name: data.product.product_name || 'Nuevo Producto',
+                            imageUrl: data.product.image_small_url || null,
+                            category: this.mapFoodFactsCategory(data.product.categories_tags || []),
+                            brand: data.product.brands || '',
+                            barcode: barcode
+                        }];
+                        this.renderCatalog();
+                        this.closeScanModal();
+                    }
                     return; // Salimos si lo encontramos
                 }
             } catch (error) {
@@ -1286,38 +1348,44 @@ class MiDespensa {
         }
     }
 
-    // ============ SHOPPING MODAL ============
-    addNewShoppingItem() {
-        const input = document.getElementById('newShoppingItem');
-        const categorySelect = document.getElementById('newShoppingCategory');
+    // ============ CATALOG & SHOPPING LOGIC ============
+    addNewCatalogItem() {
+        const input = document.getElementById('newCatalogItem');
+        const categorySelect = document.getElementById('newCatalogCategory');
         this.addShoppingItem(input.value, categorySelect.value);
         input.value = '';
     }
 
-    async addFromOFFResults(index) {
+    async addFromOFFResults(index, event) {
         const p = this.offSearchResults[index];
         if (!p) return;
 
-        const metadata = {
-            brand: p.brand,
-            weight: p.weight,
-            barcode: p.barcode,
-            unit: p.unit
-        };
+        // Animación de rebote al añadir desde internet
+        if (event) {
+            const icon = event.currentTarget.querySelector('i');
+            if (icon) {
+                icon.classList.add('bounce');
+                setTimeout(() => icon.classList.remove('bounce'), 500);
+            }
+        }
+
+        const metadata = { brand: p.brand, weight: p.weight, barcode: p.barcode, unit: p.unit };
 
         await this.addShoppingItem(p.name, p.category, p.imageUrl, p.notes, metadata);
 
-        // Limpiar el buscador para ver la lista completa actualizada
+        // Limpiar el buscador para ver la lista completa
         this.shoppingSearch = '';
-        const searchInput = document.getElementById('shoppingSearchInput');
+        const searchInput = document.getElementById('catalogSearchInput');
         if (searchInput) searchInput.value = '';
-        this.renderShoppingList();
+        this.renderCatalog();
     }
 
     async searchOpenFoodFacts(query) {
         if (query.length < 3) return;
-        const status = document.getElementById('shoppingStatus');
-        if (status) status.textContent = 'Buscando en internet...';
+        
+        // Mostrar estado de carga en el contenedor del catálogo
+        const list = document.getElementById('catalogList');
+        if (list) list.innerHTML = '<p class="empty-state"><i class="fas fa-spinner fa-spin"></i> Buscando en internet...</p>';
 
         try {
             const response = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10`);
@@ -1334,11 +1402,9 @@ class MiDespensa {
                 unit: this.extractQuantity(p.quantity || '')?.unit || ''
             }));
             
-            this.renderShoppingList();
+            this.renderCatalog();
         } catch (error) {
             console.error('Error buscando en OFF:', error);
-        } finally {
-            if (status) status.textContent = '';
         }
     }
 
@@ -1364,6 +1430,13 @@ class MiDespensa {
 
     closeLocationModal() {
         document.getElementById('locationModal').classList.remove('active');
+    }
+
+    openScanModal(context = 'inventory') {
+        this.scanContext = context;
+        const modal = document.getElementById('scanModal');
+        modal.classList.add('active');
+        this.startBarcodeScanner();
     }
 
     addNewLocation() {
@@ -1594,6 +1667,7 @@ class MiDespensa {
     render() {
         this.renderDashboard();
         this.renderInventory();
+        this.renderCatalog();
         this.renderNotes();
         this.renderShoppingList();
     }
@@ -1748,81 +1822,84 @@ class MiDespensa {
         }).join('');
     }
 
+    renderCatalog() {
+        const list = document.getElementById('catalogList');
+        if (!list) return;
+
+        let items = this.shoppingList;
+
+        // Filtrado por categoría
+        if (this.currentCatalogFilterType !== 'all') {
+            items = items.filter(i => i.category === this.currentCatalogFilterType);
+        }
+
+        const searchInput = document.getElementById('catalogSearchInput');
+        const query = searchInput ? searchInput.value.toLowerCase() : '';
+
+        if (query) {
+            items = items.filter(i => i.name.toLowerCase().includes(query));
+        }
+
+        let html = '';
+        
+        // Catálogo Local
+        if (items.length > 0) {
+            html += `<div class="shopping-category-header">Productos en Catálogo</div>`;
+            html += items.sort((a,b) => a.name.localeCompare(b.name)).map(item => `
+                ${this.renderShoppingItemRow(item, false)}
+            `).join('');
+        } else {
+            html += '<p class="empty-state">No se encontraron productos localmente.</p>';
+        }
+
+        // Resultados de Internet
+        if (this.offSearchResults.length > 0) {
+            html += `<div class="shopping-category-header" style="background: #e7f5ff; color: #1971c2;">🌍 Resultados en Internet</div>`;
+            html += this.offSearchResults.map((p, index) => {
+                const localMatch = this.shoppingList.find(i => i.name.toLowerCase() === p.name.toLowerCase());
+                const inCart = localMatch && localMatch.inCart;
+                return `
+                <div class="shopping-item">
+                    <button class="product-btn" onclick="app.addFromOFFResults(${index}, event);" style="color: ${inCart ? 'var(--secondary)' : 'var(--primary)'};" title="${inCart ? 'Ya está en el carrito' : 'Descargar al catálogo'}">
+                        <i class="fas ${inCart ? 'fa-shopping-cart' : 'fa-cloud-download-alt'}"></i>
+                    </button>
+                    ${p.imageUrl 
+                        ? `<img src="${p.imageUrl}" style="width: 30px; height: 30px; border-radius: 4px; object-fit: cover;" onclick="app.showImagePreview('${p.name.replace(/'/g, "\\'")}', '${p.imageUrl}', '${p.brand}')">`
+                        : `<div style="width: 30px; height: 30px; border-radius: 4px; background: var(--gray-light); display: flex; align-items: center; justify-content: center; color: var(--gray); font-size: 1rem;">
+                             <i class="fas fa-box"></i>
+                           </div>`
+                    }
+                    <label>${p.name} <small>(${p.brand})</small></label>
+                </div>
+            `;}).join('');
+        } else if (query.length >= 3) {
+            html += `<div style="padding: 1rem; text-align: center;">
+                <button class="btn btn-secondary btn-small" onclick="app.searchOpenFoodFacts('${query.replace(/'/g, "\\'")}');">
+                    <i class="fas fa-search"></i> Buscar en internet
+                </button>
+            </div>`;
+        }
+
+        list.innerHTML = html;
+    }
+
     renderShoppingList() {
         const list = document.getElementById('shoppingList');
+        if (!list) return;
+
+        const inCartItems = this.shoppingList.filter(i => i.inCart);
         const clearBtn = document.getElementById('clearShoppingBtn');
         const shareBtn = document.getElementById('shareWhatsAppBtn');
-        const container = document.querySelector('.shopping-container');
 
-        if (this.shoppingList.length === 0) {
-            list.innerHTML = '<p class="empty-state">Lista vacía</p>';
-            clearBtn.style.display = 'none';
+        if (inCartItems.length === 0) {
+            list.innerHTML = '<p class="empty-state">El carrito está vacío. Ve al catálogo para añadir productos.</p>';
+            if (clearBtn) clearBtn.style.display = 'none';
             if (shareBtn) shareBtn.style.display = 'none';
-            const existingSearch = document.getElementById('shoppingSearchInput');
-            if (existingSearch) existingSearch.parentElement.remove();
             return;
         }
 
-        // Inyectar buscador si no existe (Mejora para listas largas)
-        if (container && !document.getElementById('shoppingSearchInput')) {
-            const searchDiv = document.createElement('div');
-            searchDiv.style.display = 'flex';
-            searchDiv.style.gap = '0.5rem';
-            searchDiv.style.marginBottom = '1rem';
-            searchDiv.style.alignItems = 'center';
-            
-            searchDiv.innerHTML = `
-                <div class="search-bar" style="margin-bottom: 0; flex: 1; padding: 0 0.5rem;">
-                    <i class="fas fa-search" style="font-size: 0.8rem;"></i>
-                    <input type="text" id="shoppingSearchInput" placeholder="Buscar..." value="${this.shoppingSearch}" style="padding: 0.5rem 0; font-size: 0.9rem;">
-                </div>
-                <button class="btn btn-secondary btn-small" id="toggleCatalogBtn">
-                    <i class="fas fa-eye-slash"></i>
-                </button>
-            `;
-            container.insertBefore(searchDiv, list);
-            
-            document.getElementById('shoppingSearchInput').addEventListener('input', (e) => {
-                this.shoppingSearch = e.target.value;
-                this.renderShoppingList();
-            });
-            document.getElementById('toggleCatalogBtn').addEventListener('click', () => {
-                this.hideCatalog = !this.hideCatalog;
-                this.renderShoppingList();
-            });
-        }
-        
-        // Inyectar estado de carga si no existe
-        if (container && !document.getElementById('shoppingStatus')) {
-            const statusDiv = document.createElement('div');
-            statusDiv.id = 'shoppingStatus';
-            statusDiv.style.fontSize = '0.8rem';
-            statusDiv.style.color = 'var(--primary)';
-            statusDiv.style.textAlign = 'center';
-            container.insertBefore(statusDiv, list);
-        }
-
-        const toggleBtn = document.getElementById('toggleCatalogBtn');
-        if (toggleBtn) {
-            toggleBtn.className = `btn ${this.hideCatalog ? 'btn-primary' : 'btn-secondary'} btn-small`;
-            toggleBtn.innerHTML = `<i class="fas ${this.hideCatalog ? 'fa-eye' : 'fa-eye-slash'}"></i>`;
-            toggleBtn.title = this.hideCatalog ? 'Mostrar catálogo' : 'Modo compra (ocultar catálogo)';
-        }
-
-        clearBtn.style.display = 'block';
-        clearBtn.innerHTML = '<i class="fas fa-trash-alt"></i> Limpiar Carrito';
-        clearBtn.title = "Quitar todos los productos del carrito y volver al catálogo";
-        clearBtn.className = 'btn btn-secondary btn-small';
-
+        if (clearBtn) clearBtn.style.display = 'block';
         if (shareBtn) shareBtn.style.display = 'block';
-        
-        // Filtrar por búsqueda
-        let filteredItems = this.shoppingList;
-        if (this.shoppingSearch) {
-            filteredItems = filteredItems.filter(i => 
-                i.name.toLowerCase().includes(this.shoppingSearch.toLowerCase())
-            );
-        }
 
         const categoryMeta = {
             dairy: { icon: '🥛', name: 'Lácteos' },
@@ -1835,14 +1912,9 @@ class MiDespensa {
             other: { icon: '📦', name: 'Otros' },
         };
 
-        const isSearching = this.shoppingSearch.length > 0;
-        // El catálogo oculta productos que ya están en el carrito para no duplicar, 
-        // pero al buscar permitimos verlos marcados para dar contexto.
-        const catalog = filteredItems.filter(i => !i.inCart || (isSearching && i.inCart)).sort((a, b) => a.name.localeCompare(b.name));
-        const toBuy = filteredItems.filter(i => i.inCart && !i.completed);
-        const completed = filteredItems.filter(i => i.inCart && i.completed).sort((a, b) => a.name.localeCompare(b.name));
+        const toBuy = inCartItems.filter(i => !i.completed);
+        const completed = inCartItems.filter(i => i.completed);
 
-        // Agrupar pendientes por categoría
         const grouped = {};
         toBuy.forEach(item => {
             const cat = item.category || 'other';
@@ -1852,60 +1924,19 @@ class MiDespensa {
 
         let html = '';
         
-        // 1. SECCIÓN: POR COMPRAR (CARRITO)
         if (toBuy.length > 0) {
-            html += `<div class="shopping-category-header" style="background: #fff9db; color: #f08c00;">🛒 Carrito (Pendiente)</div>`;
             Object.keys(categoryMeta).forEach(catKey => {
                 if (grouped[catKey] && grouped[catKey].length > 0) {
-                    // Ordenar alfabéticamente dentro de cada categoría
                     grouped[catKey].sort((a, b) => a.name.localeCompare(b.name));
-                    html += `<div class="shopping-category-header" style="font-size: 0.65rem; padding-left: 2rem; opacity: 0.8;">${categoryMeta[catKey].icon} ${categoryMeta[catKey].name}</div>`;
+                    html += `<div class="shopping-category-header">${categoryMeta[catKey].icon} ${categoryMeta[catKey].name}</div>`;
                     html += grouped[catKey].map(item => this.renderShoppingItemRow(item, true)).join('');
                 }
             });
         }
 
-        // 2. SECCIÓN: CATÁLOGO LOCAL / BASE
-        if (!this.hideCatalog && catalog.length > 0) {
-            html += `<div class="shopping-category-header" style="background: #f1f3f5; color: #495057;">📁 Catálogo (Añadir al carrito)</div>`;
-            html += catalog.map(item => this.renderShoppingItemRow(item, false)).join('');
-        }
-
-        // 3. SECCIÓN: COMPRADO
         if (completed.length > 0) {
-            html += `<div class="shopping-category-header" style="background: #ebfbee; color: #2b8a3e;">✅ Comprado</div>`;
+            html += `<div class="shopping-category-header" style="background: #ebfbee; color: #2b8a3e;">✅ Ya en la cesta</div>`;
             html += completed.map(item => this.renderShoppingItemRow(item, true)).join('');
-        }
-
-        // 4. SECCIÓN: RESULTADOS DE OPEN FOOD FACTS (Internet)
-        if (!this.hideCatalog && this.offSearchResults.length > 0) {
-            html += `<div class="shopping-category-header" style="background: #e7f5ff; color: #1971c2;">🌍 Resultados en Internet</div>`;
-            html += this.offSearchResults.map((p, index) => {
-                const localMatch = this.shoppingList.find(i => i.name.toLowerCase() === p.name.toLowerCase());
-                // Si ya está en el carrito actual, desaparece de la lista de internet para evitar ruido
-                if (localMatch && localMatch.inCart) return '';
-
-                const escapedName = p.name.replace(/'/g, "\\'");
-                const escapedNotes = (p.notes || '').replace(/'/g, "\\'");
-                const escapedImg = (p.imageUrl || '').replace(/'/g, "\\'");
-
-                return `
-                <div class="shopping-item">
-                    <button class="product-btn" onclick="app.addFromOFFResults(${index});" style="color: ${localMatch ? 'var(--success)' : 'var(--primary)'};" title="${localMatch ? 'Actualizar y añadir al carrito' : 'Descargar al catálogo'}">
-                        <i class="fas ${localMatch ? 'fa-cart-plus' : 'fa-cloud-download-alt'}"></i>
-                    </button>
-                    ${p.imageUrl ? `<img src="${p.imageUrl}" style="width: 30px; height: 30px; border-radius: 4px; object-fit: cover;" onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')">` : ''}
-                <label style="color: var(--gray-dark); font-weight: normal; font-size: 0.9rem; cursor: pointer;" onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')">
-                    ${p.name} <small style="color: var(--gray);">${p.brand ? '[' + p.brand + ']' : ''} ${p.weight || ''}</small>
-                </label>
-                </div>
-            `;}).join('');
-        } else if (!this.hideCatalog && this.shoppingSearch.length >= 3) {
-            html += `<div style="padding: 1rem; text-align: center;">
-                <button class="btn btn-secondary btn-small" onclick="app.searchOpenFoodFacts('${this.shoppingSearch.replace(/'/g, "\\'")}');">
-                    <i class="fas fa-search"></i> Buscar "${this.shoppingSearch}" en internet
-                </button>
-            </div>`;
         }
 
         list.innerHTML = html;
@@ -1915,26 +1946,33 @@ class MiDespensa {
         const escapedName = (item.name || '').replace(/'/g, "\\'");
         const escapedNotes = (item.notes || '').replace(/'/g, "\\'");
         const escapedImg = (item.imageUrl || '').replace(/'/g, "\\'");
+        
+        const onclick = !isInCart ? `onclick="app.showCatalogItemModal('${item.id}')"` : '';
+
+        const hasImage = item.imageUrl && item.imageUrl !== 'null' && item.imageUrl !== '';
+        const imageHtml = hasImage 
+            ? `<img src="${item.imageUrl}" style="width: 30px; height: 30px; border-radius: 4px; object-fit: cover; opacity: ${item.completed ? '0.5' : '1'}" onclick="event.stopPropagation(); app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')">`
+            : `<div style="width: 30px; height: 30px; border-radius: 4px; background: var(--gray-light); display: flex; align-items: center; justify-content: center; color: var(--gray); font-size: 1rem; opacity: ${item.completed ? '0.5' : '1'}"><i class="fas fa-box"></i></div>`;
 
         return `
-            <div class="shopping-item ${isInCart ? 'in-cart-item' : ''}" style="${!isInCart && item.inCart ? 'opacity: 0.5;' : ''}">
-                ${item.imageUrl ? `<img src="${item.imageUrl}" style="width: 30px; height: 30px; border-radius: 4px; object-fit: cover; opacity: ${item.completed ? '0.5' : '1'}" onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')">` : ''}
+            <div class="shopping-item ${isInCart ? 'in-cart-item' : ''}" ${onclick} style="${!isInCart && item.inCart ? 'opacity: 0.5;' : ''} cursor: pointer;">
+                ${imageHtml}
                 ${isInCart ? 
-                    `<input type="checkbox" id="item-${item.id}" ${item.completed ? 'checked' : ''} onchange="app.toggleShoppingItem('${item.id}');">` :
+                    `<input type="checkbox" id="item-${item.id}" ${item.completed ? 'checked' : ''} onchange="event.stopPropagation(); app.toggleShoppingItem('${item.id}');">` :
                     (item.inCart ? 
-                        `<button class="product-btn" style="color: var(--gray);" title="Ya está en el carrito"><i class="fas fa-check-circle"></i></button>` :
-                        `<button class="product-btn" onclick="app.toggleInCart('${item.id}', true);" style="color: var(--success);" title="Añadir al carrito"><i class="fas fa-cart-plus"></i></button>`
+                        `<button class="product-btn" style="color: var(--gray);" title="Ya está en el carrito" onclick="event.stopPropagation();"><i class="fas fa-check-circle"></i></button>` :
+                        `<button class="product-btn" onclick="event.stopPropagation(); app.toggleInCart('${item.id}', true, event);" style="color: var(--success);" title="Añadir al carrito"><i class="fas fa-cart-plus"></i></button>`
                     )
                 }
-                <label for="item-${item.id}" style="${!isInCart ? 'color: var(--gray); font-weight: normal; cursor: pointer;' : ''}" ${!isInCart ? `onclick="app.showImagePreview('${escapedName}', '${escapedImg}', '${escapedNotes}')"` : ''}>
+                <label style="${!isInCart ? 'color: var(--gray); font-weight: normal; cursor: pointer;' : ''}">
                     ${item.name}
                     ${item.metadata && (item.metadata.brand || item.metadata.weight) ? 
                         `<div style="font-size: 0.7rem; opacity: 0.7;">${item.metadata.brand} ${item.metadata.weight}</div>` : ''}
                 </label>
                 <div class="product-actions">
                     ${isInCart ? 
-                        `<button class="delete-btn" style="color: var(--warning);" onclick="app.toggleInCart('${item.id}', false);" title="Quitar del carrito"><i class="fas fa-minus-square"></i></button>` :
-                        `<button class="delete-btn" onclick="app.deleteShoppingItem('${item.id}');" title="Eliminar del catálogo"><i class="fas fa-trash"></i></button>`
+                        `<button class="delete-btn" style="color: var(--warning);" onclick="event.stopPropagation(); app.toggleInCart('${item.id}', false, event);" title="Quitar del carrito"><i class="fas fa-minus-square"></i></button>` :
+                        `<button class="delete-btn" onclick="event.stopPropagation(); app.deleteShoppingItem('${item.id}');" title="Eliminar del catálogo"><i class="fas fa-trash"></i></button>`
                     }
                 </div>
             </div>`;

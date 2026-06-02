@@ -36,13 +36,17 @@
                 <i class="fas fa-list"></i>
                 <span>Inventario</span>
             </button>
+            <button class="nav-tab" data-tab="catalog">
+                <i class="fas fa-book"></i>
+                <span>Catálogo</span>
+            </button>
             <button class="nav-tab" data-tab="notes">
                 <i class="fas fa-sticky-note"></i>
                 <span>Notas</span>
             </button>
             <button class="nav-tab" data-tab="shopping">
-                <i class="fas fa-shopping-bag"></i>
-                <span>Compra</span>
+                <i class="fas fa-shopping-cart"></i>
+                <span>Carrito</span>
             </button>
         </nav>
 
@@ -137,27 +141,61 @@
                 </div>
             </section>
 
-            <!-- SHOPPING LIST -->
-            <section id="shopping" class="screen">
+            <!-- CATALOG -->
+            <section id="catalog" class="screen">
                 <div class="shopping-container">
+                    <div class="search-bar">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="catalogSearchInput" placeholder="Buscar en el catálogo maestro...">
+                    </div>
+
+                    <div class="filter-buttons" id="catalogFilterButtons">
+                        <button class="filter-btn active" data-filter="all">Todos</button>
+                        <button class="filter-btn" data-filter="dairy">🥛 Lácteos</button>
+                        <button class="filter-btn" data-filter="beverages">🥤 Bebidas</button>
+                        <button class="filter-btn" data-filter="produce">🥬 Frutas/Verduras</button>
+                        <button class="filter-btn" data-filter="meat">🍗 Carnes</button>
+                        <button class="filter-btn" data-filter="frozen">❄️ Congelados</button>
+                        <button class="filter-btn" data-filter="pantry">🍞 Despensa</button>
+                        <button class="filter-btn" data-filter="drugstore">🧼 Droguería</button>
+                        <button class="filter-btn" data-filter="other">📦 Otros</button>
+                    </div>
+
                     <div class="section">
-                        <h2>📝 Lista de compra</h2>
+                        <h2>Maestro de Productos</h2>
                         <div class="input-group" style="flex-wrap: wrap;">
-                            <input type="text" id="newShoppingItem" placeholder="Ej: Leche, Pan..." style="flex: 2; min-width: 150px;">
-                            <select id="newShoppingCategory" style="flex: 1; min-width: 120px; border: 1px solid var(--gray-light); border-radius: 10px; padding: 0.5rem; font-size: 0.9rem;">
+                            <input type="text" id="newCatalogItem" placeholder="Nuevo producto..." style="flex: 2; min-width: 150px;">
+                            <select id="newCatalogCategory" style="flex: 1; min-width: 120px; border: 1px solid var(--gray-light); border-radius: 10px; padding: 0.5rem; font-size: 0.9rem;">
                                 <option value="pantry">🍞 Despensa</option>
                                 <option value="dairy">🥛 Lácteos</option>
-                                <option value="beverages">🥤 Bebidas</option>
                                 <option value="produce">🥬 Frutas/Verduras</option>
                                 <option value="meat">🍗 Carnes</option>
+                                <option value="beverages">🥤 Bebidas</option>
                                 <option value="frozen">❄️ Congelados</option>
                                 <option value="drugstore">🧼 Droguería</option>
                                 <option value="other">📦 Otros</option>
                             </select>
-                            <button class="btn btn-small" id="addShoppingBtn">
+                            <button class="btn btn-primary btn-small" id="addCatalogBtn">
                                 <i class="fas fa-plus"></i>
                             </button>
+                            <button type="button" class="btn btn-secondary btn-small" id="scanCatalogBtn">
+                                <i class="fas fa-camera"></i> Escanear
+                            </button>
                         </div>
+                    </div>
+
+                    <div id="catalogList" class="shopping-list">
+                        <!-- Se llena dinámicamente -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- SHOPPING LIST -->
+            <section id="shopping" class="screen">
+                <div class="shopping-container">
+                    <div class="section">
+                        <h2>🛒 Mi Carrito</h2>
+                        <p style="font-size: 0.85rem; color: var(--gray);">Añade productos desde la pestaña de Catálogo.</p>
                     </div>
 
                     <div id="shoppingList" class="shopping-list">
