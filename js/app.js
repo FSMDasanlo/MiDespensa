@@ -719,7 +719,7 @@ class MiDespensa {
     }
 
     // ============ SHOPPING LIST ============
-    async addShoppingItem(name, category = 'pantry', imageUrl = null, notes = '', metadata = {}) {
+    async addShoppingItem(name, category = 'pantry', imageUrl = null, notes = '', metadata = {}, inCart = true) {
         if (!name.trim()) return;
         if (!this.firestoreEnabled || !this.db) return;
         if (imageUrl === 'null') imageUrl = null; // Limpiar string "null" accidental
@@ -728,7 +728,7 @@ class MiDespensa {
             name: name.trim(),
             category: category,
             completed: false,
-            inCart: true,
+            inCart: inCart,
             imageUrl: imageUrl || null,
             notes: notes || '',
             barcode: metadata.barcode || '',
@@ -745,7 +745,7 @@ class MiDespensa {
             const existing = this.shoppingList.find(i => i.name.toLowerCase() === name.trim().toLowerCase());
             if (existing) {
                 // Actualizar el item existente con la nueva información si viene de una búsqueda enriquecida
-                const updates = { inCart: true, completed: false };
+                const updates = { inCart: inCart, completed: false };
                 if (metadata.barcode && !existing.barcode) updates.barcode = metadata.barcode;
                 if (imageUrl && !existing.imageUrl) updates.imageUrl = imageUrl;
                 if (metadata.brand || metadata.weight) {
@@ -1227,15 +1227,17 @@ class MiDespensa {
                         this.closeScanModal();
                     } else {
                         // Contexto catálogo
-                        this.offSearchResults = [{
-                            name: data.product.product_name || 'Nuevo Producto',
+                        const found = {
+                            name: data.product.product_name || data.product.generic_name || data.product.brands || 'Nuevo Producto',
                             imageUrl: data.product.image_small_url || null,
                             category: this.mapFoodFactsCategory(data.product.categories_tags || []),
+                            notes: data.product.brands ? `Marca: ${data.product.brands}` : '',
                             brand: data.product.brands || '',
-                            barcode: barcode
-                        }];
-                        this.renderCatalog();
-                        this.closeScanModal();
+                            barcode: barcode,
+                            weight: data.product.quantity || '',
+                            unit: this.extractQuantity(data.product.quantity || '')?.unit || ''
+                        };
+                        this.showScanResultConfirmation(found);
                     }
                     return; // Salimos si lo encontramos
                 }
@@ -1247,6 +1249,95 @@ class MiDespensa {
         status.textContent = 'No encontrado. Introduce datos manualmente.';
         alert('No se encontró el producto en ninguna base de datos.');
         this.closeScanModal();
+    }
+
+    playErrorBeep() {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            const audioCtx = new AudioContext();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.type = 'sawtooth'; 
+            oscillator.frequency.setValueAtTime(150, audioCtx.currentTime); 
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + 0.4);
+        } catch (e) {
+            console.warn('No se pudo reproducir el sonido de error:', e);
+        }
+    }
+
+    showScanResultConfirmation(p) {
+        this.closeScanModal();
+
+        const exists = p.barcode && this.shoppingList.some(item => item.barcode === p.barcode);
+        exists ? this.playErrorBeep() : this.playBeep();
+
+        let modal = document.getElementById('scanResultModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'scanResultModal';
+            modal.className = 'modal';
+            modal.onclick = (e) => { if (e.target.id === 'scanResultModal') modal.classList.remove('active'); };
+            document.body.appendChild(modal);
+        }
+
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 style="${exists ? 'color: var(--danger);' : ''}">${exists ? '⚠️ Ya Registrado' : 'Producto Encontrado'}</h2>
+                    <button class="close-btn" onclick="document.getElementById('scanResultModal').classList.remove('active')">&times;</button>
+                </div>
+                <div style="padding: 1.5rem; text-align: center;">
+                    ${exists ? '<div style="background: #fff5f5; color: #c92a2a; padding: 0.8rem; border-radius: 10px; margin-bottom: 1.5rem; font-size: 0.9rem; border: 1px solid #ffa8a8; text-align: left;">Este producto ya está en tu catálogo. Al descargarlo actualizarás sus datos.</div>' : ''}
+                    ${p.imageUrl ? `<img src="${p.imageUrl}" style="max-width: 150px; max-height: 150px; border-radius: 8px; margin-bottom: 1rem; object-fit: contain;">` : 
+                    `<div style="width: 80px; height: 80px; background: var(--light); display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; border-radius: 50%; color: var(--gray); font-size: 2rem;"><i class="fas fa-box"></i></div>`}
+                    <h3 style="margin-bottom: 0.5rem; color: var(--primary-dark);">${p.name}</h3>
+                    <div style="text-align: left; margin-bottom: 1rem; max-width: 280px; margin-left: auto; margin-right: auto;">
+                        <label style="font-size: 0.8rem; color: var(--gray); font-weight: 600; display: block; margin-bottom: 0.3rem;">Nombre del Producto:</label>
+                        <input type="text" id="scanResultName" value="${p.name.replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.6rem; border-radius: 10px; border: 1px solid var(--gray-light); font-family: inherit; font-size: 1rem; font-weight: 600; color: var(--primary-dark); background: white;">
+                    </div>
+                    <p style="color: var(--gray); margin-bottom: 1rem;">${p.brand} ${p.weight ? `(${p.weight})` : ''}</p>
+                    
+                    <div style="text-align: left; margin-bottom: 1.5rem; max-width: 280px; margin-left: auto; margin-right: auto;">
+                        <label style="font-size: 0.8rem; color: var(--gray); font-weight: 600; display: block; margin-bottom: 0.3rem;">Confirmar Categoría:</label>
+                        <select id="scanResultCategory" style="width: 100%; padding: 0.6rem; border-radius: 10px; border: 1px solid var(--gray-light); font-family: inherit; font-size: 0.9rem; background: white;">
+                            ${['pantry','dairy','produce','meat','beverages','frozen','drugstore','other'].map(c => `<option value="${c}" ${p.category === c ? 'selected' : ''}>${this.getCategoryName(c)}</option>`).join('')}
+                        </select>
+                    </div>
+
+                    <div class="modal-buttons" style="flex-direction: column; gap: 0.8rem;">
+                        <button class="btn btn-primary" id="confirmDownloadBtn" style="width: 100%;">Descargar y añadir al carrito</button>
+                        <button class="btn btn-secondary" id="confirmDownloadOnlyBtn" style="width: 100%;">Solo añadir al catálogo</button>
+                        <button class="btn btn-secondary" onclick="document.getElementById('scanResultModal').classList.remove('active')" style="width: 100%;">Ignorar</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const action = async (inCart) => {
+            const name = document.getElementById('scanResultName').value.trim();
+            if (!name) {
+                alert('Por favor, indica un nombre para el producto.');
+                return;
+            }
+            const category = document.getElementById('scanResultCategory').value;
+            const meta = { brand: p.brand, weight: p.weight, barcode: p.barcode, unit: p.unit };
+            await this.addShoppingItem(p.name, category, p.imageUrl, p.notes, meta, inCart);
+            await this.addShoppingItem(name, category, p.imageUrl, p.notes, meta, inCart);
+            modal.classList.remove('active');
+            this.renderCatalog();
+            if (inCart) this.switchTab('shopping');
+        };
+
+        document.getElementById('confirmDownloadBtn').onclick = () => action(true);
+        document.getElementById('confirmDownloadOnlyBtn').onclick = () => action(false);
+
+        modal.classList.add('active');
     }
 
     populateProductFieldsFromFoodFacts(product, barcode) {
