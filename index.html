@@ -197,7 +197,7 @@
                         <button class="btn btn-secondary" id="clearShoppingBtn" style="display:none;">
                             <i class="fas fa-trash"></i> Limpiar lista
                         </button>
-                        <button class="btn btn-primary" id="shareWhatsAppBtn" style="display:none; background-color: #25D366; border-color: #25D366;">
+                        <button class="btn btn-primary" id="shareWhatsAppBtn" style="display:none; background-color: #E8F5E9; color: #3e2723; border-color: #25D366; border: 2px solid #25D366;">
                             <i class="fab fa-whatsapp"></i> WhatsApp
                         </button>
                     </div>
@@ -433,6 +433,46 @@
                     <div class="app-info">
                         <p><strong>Home Status v1.0</strong></p>
                         <p>Controla tu hogar fácilmente 🏠</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Búsqueda en Catálogo para Agregar Producto -->
+        <div id="catalogSearchModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Agregar Producto</h2>
+                    <button class="close-btn" id="closeCatalogSearchBtn">&times;</button>
+                </div>
+
+                <div class="form">
+                    <div class="form-group">
+                        <label for="catalogSearchField">Buscar en catálogo</label>
+                        <input type="text" id="catalogSearchField" placeholder="Escribe el nombre del producto..." style="width: 100%; padding: 0.8rem; border: 2px solid var(--primary); border-radius: 10px; font-size: 1rem;">
+                    </div>
+
+                    <div class="filter-buttons" id="catalogSearchFilterButtons" style="margin-bottom: 1rem;">
+                        <button class="filter-btn active" data-filter="all">Todos</button>
+                        <button class="filter-btn" data-filter="dairy">🥛 Lácteos</button>
+                        <button class="filter-btn" data-filter="beverages">🥤 Bebidas</button>
+                        <button class="filter-btn" data-filter="produce">🥬 Frutas/Verduras</button>
+                        <button class="filter-btn" data-filter="meat">🍗 Carnes</button>
+                        <button class="filter-btn" data-filter="frozen">❄️ Congelados</button>
+                        <button class="filter-btn" data-filter="pantry">🍞 Despensa</button>
+                        <button class="filter-btn" data-filter="drugstore">🧼 Droguería</button>
+                        <button class="filter-btn" data-filter="other">📦 Otros</button>
+                    </div>
+
+                    <div id="catalogSearchResults" class="product-list" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--gray-light); border-radius: 10px; padding: 0.5rem;">
+                        <p class="empty-state" style="text-align: center; padding: 2rem 1rem;">Empieza a escribir para ver productos...</p>
+                    </div>
+
+                    <div class="modal-buttons" style="margin-top: 1.5rem;">
+                        <button type="button" class="btn btn-secondary" id="cancelCatalogSearchBtn">Cancelar</button>
+                        <button type="button" class="btn btn-secondary" id="scanFromAddBtn" style="background-color: #4CAF50; border-color: #4CAF50;">
+                            <i class="fas fa-camera"></i> O escanear código
+                        </button>
                     </div>
                 </div>
             </div>

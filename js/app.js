@@ -39,6 +39,8 @@ class MiDespensa {
         this.currentInventoryFilterValue = null;
         this.shoppingSearch = '';
         this.currentCatalogFilterType = 'all';
+        this.catalogSearchFilterType = 'all'; // Para el modal de búsqueda de catálogo
+        this.scanContextAdd = null; // Para rastrear si el escaneo viene desde agregar producto
         this.hideCatalog = false;
         this.db = null;
         this.scanContext = 'inventory'; // 'inventory' o 'catalog'
@@ -877,7 +879,7 @@ class MiDespensa {
         });
 
         // Dashboard
-        document.getElementById('addProductBtn').addEventListener('click', () => this.showProductModal());
+        document.getElementById('addProductBtn').addEventListener('click', () => this.showCatalogSearchModal());
 
         // Inventory
         document.getElementById('searchInput').addEventListener('input', (e) => {
@@ -929,6 +931,21 @@ class MiDespensa {
         document.getElementById('closeScanBtn').addEventListener('click', () => this.closeScanModal());
         document.getElementById('cancelScanBtn').addEventListener('click', () => this.closeScanModal());
 
+        // Catalog Search Modal
+        document.getElementById('closeCatalogSearchBtn')?.addEventListener('click', () => this.closeCatalogSearchModal());
+        document.getElementById('cancelCatalogSearchBtn')?.addEventListener('click', () => this.closeCatalogSearchModal());
+        document.getElementById('scanFromAddBtn')?.addEventListener('click', () => this.openScanModal('catalog-add'));
+        document.getElementById('catalogSearchField')?.addEventListener('input', () => this.renderCatalogSearchResults());
+        
+        document.querySelectorAll('#catalogSearchFilterButtons .filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('#catalogSearchFilterButtons .filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.catalogSearchFilterType = btn.dataset.filter;
+                this.renderCatalogSearchResults();
+            });
+        });
+
         // Settings
         document.getElementById('settingsBtn').addEventListener('click', () => this.showSettingsModal());
         document.getElementById('closeSettingsBtn').addEventListener('click', () => this.closeSettingsModal());
@@ -972,6 +989,9 @@ class MiDespensa {
         // Modal backdrop click
         document.getElementById('productModal').addEventListener('click', (e) => {
             if (e.target.id === 'productModal') this.closeProductModal();
+        });
+        document.getElementById('catalogSearchModal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'catalogSearchModal') this.closeCatalogSearchModal();
         });
         document.getElementById('settingsModal').addEventListener('click', (e) => {
             if (e.target.id === 'settingsModal') this.closeSettingsModal();
@@ -1040,7 +1060,8 @@ class MiDespensa {
         const modal = document.getElementById('productModal');
         const form = document.getElementById('productForm');
         
-        if (product) {
+        if (product && product.firebaseId && !product.fromCatalog) {
+            // Es un producto existente del inventario, editarlo
             document.getElementById('modalTitle').textContent = 'Editar Producto';
             document.getElementById('productName').value = product.name;
             document.getElementById('productBarcode').value = product.barcode || '';
@@ -1052,7 +1073,23 @@ class MiDespensa {
             document.getElementById('productNotes').value = product.notes || '';
             document.getElementById('productPerishable').checked = product.perishable || false;
             document.getElementById('deleteProductBtn').style.display = 'block';
+        } else if (product && product.fromCatalog) {
+            // Es un producto del catálogo, agregarlo al inventario
+            form.reset();
+            document.getElementById('modalTitle').textContent = 'Agregar Producto del Catálogo';
+            document.getElementById('productName').value = product.name;
+            document.getElementById('productBarcode').value = product.barcode || '';
+            document.getElementById('productCategory').value = product.category;
+            document.getElementById('productLocation').value = product.location;
+            document.getElementById('productQuantity').value = product.quantity || 1;
+            document.getElementById('productUnit').value = product.unit;
+            document.getElementById('productExpiry').value = product.expiryDate || '';
+            document.getElementById('productNotes').value = product.notes || '';
+            document.getElementById('productPerishable').checked = product.perishable || false;
+            document.getElementById('deleteProductBtn').style.display = 'none';
+            this.currentProduct = null; // No es un producto existente, es uno nuevo
         } else {
+            // Es un producto completamente nuevo
             form.reset();
             document.getElementById('modalTitle').textContent = 'Agregar Producto';
             document.getElementById('productQuantity').value = '1';
@@ -1073,6 +1110,102 @@ class MiDespensa {
     closeProductModal() {
         document.getElementById('productModal').classList.remove('active');
         this.currentProduct = null;
+    }
+
+    showCatalogSearchModal() {
+        this.catalogSearchFilterType = 'all';
+        const modal = document.getElementById('catalogSearchModal');
+        if (modal) {
+            document.getElementById('catalogSearchField').value = '';
+            this.renderCatalogSearchResults();
+            modal.classList.add('active');
+            document.getElementById('catalogSearchField').focus();
+        }
+    }
+
+    closeCatalogSearchModal() {
+        const modal = document.getElementById('catalogSearchModal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+        this.scanContext = 'inventory'; // Resetear el contexto de escaneo
+    }
+
+    renderCatalogSearchResults() {
+        const searchTerm = (document.getElementById('catalogSearchField')?.value || '').toLowerCase();
+        const filterType = this.catalogSearchFilterType;
+        const resultsContainer = document.getElementById('catalogSearchResults');
+        
+        if (!resultsContainer) return;
+
+        let filtered = this.shoppingList;
+
+        // Filtrar por categoría
+        if (filterType !== 'all') {
+            filtered = filtered.filter(item => item.category === filterType);
+        }
+
+        // Filtrar por búsqueda
+        if (searchTerm) {
+            filtered = filtered.filter(item => 
+                item.name.toLowerCase().includes(searchTerm)
+            );
+        }
+
+        if (filtered.length === 0) {
+            resultsContainer.innerHTML = '<p class="empty-state" style="text-align: center; padding: 2rem 1rem;">No se encontraron productos</p>';
+            return;
+        }
+
+        const categoryEmojis = {
+            dairy: '🥛',
+            beverages: '🥤',
+            produce: '🥬',
+            meat: '🍗',
+            frozen: '❄️',
+            pantry: '🍞',
+            drugstore: '🧼',
+            other: '📦'
+        };
+
+        resultsContainer.innerHTML = filtered.map(item => `
+            <div class="product-item" style="cursor: pointer; padding: 0.8rem; border-bottom: 1px solid var(--gray-light);" onclick="app.selectCatalogItemForInventory('${item.id}')">
+                <div class="product-info" style="display: flex; align-items: center; gap: 1rem;">
+                    ${item.imageUrl && item.imageUrl !== 'null' ? `<img src="${item.imageUrl}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 5px;">` : `<div style="width: 50px; height: 50px; background: var(--light); border-radius: 5px; display: flex; align-items: center; justify-content: center; color: var(--gray);"><i class="fas fa-box"></i></div>`}
+                    <div>
+                        <div class="product-name">${item.name}</div>
+                        <div class="product-meta" style="font-size: 0.8rem;">
+                            <span>${categoryEmojis[item.category] || '📦'} ${this.getCategoryName(item.category)}</span>
+                            ${item.metadata?.brand ? `<span style="margin-left: 0.5rem;">• ${item.metadata.brand}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    selectCatalogItemForInventory(catalogItemId) {
+        const catalogItem = this.shoppingList.find(item => item.id === catalogItemId);
+        if (!catalogItem) return;
+
+        // Preparar los datos del producto para el formulario
+        const productData = {
+            name: catalogItem.name,
+            category: catalogItem.category,
+            barcode: catalogItem.barcode || '',
+            location: 'pantry', // Por defecto
+            quantity: 1,
+            unit: catalogItem.metadata?.unit || 'unidad',
+            expiryDate: '',
+            notes: catalogItem.metadata?.brand ? `Marca: ${catalogItem.metadata.brand}` : '',
+            perishable: false,
+            fromCatalog: true,
+            catalogItemId: catalogItemId
+        };
+
+        // Cerrar modal de búsqueda y abrir el formulario de producto
+        this.closeCatalogSearchModal();
+        this.showProductModal(productData);
     }
 
     closeScanModal() {
@@ -1225,8 +1358,35 @@ class MiDespensa {
                         this.playBeep();
                         status.textContent = 'Producto encontrado!';
                         this.closeScanModal();
+                    } else if (this.scanContext === 'catalog-add') {
+                        // Contexto: escanear desde agregar producto
+                        // Primero agregar/actualizar en catálogo, luego en inventario
+                        const found = {
+                            name: data.product.product_name || data.product.generic_name || data.product.brands || 'Nuevo Producto',
+                            imageUrl: data.product.image_small_url || null,
+                            category: this.mapFoodFactsCategory(data.product.categories_tags || []),
+                            notes: data.product.brands ? `Marca: ${data.product.brands}` : '',
+                            brand: data.product.brands || '',
+                            barcode: barcode,
+                            weight: data.product.quantity || '',
+                            unit: this.extractQuantity(data.product.quantity || '')?.unit || ''
+                        };
+                        
+                        // Agregar al catálogo maestro si no existe
+                        await this.addShoppingItem(found.name, found.category, found.imageUrl, found.notes, {
+                            brand: found.brand,
+                            barcode: barcode,
+                            weight: found.weight,
+                            unit: found.unit
+                        }, false); // inCart = false, solo agregamos al catálogo
+                        
+                        // Ahora mostrar para agregarlo al inventario
+                        this.playBeep();
+                        status.textContent = 'Agregado al catálogo!';
+                        this.closeScanModal();
+                        this.showAddToInventoryModal(found);
                     } else {
-                        // Contexto catálogo
+                        // Contexto catálogo (original)
                         const found = {
                             name: data.product.product_name || data.product.generic_name || data.product.brands || 'Nuevo Producto',
                             imageUrl: data.product.image_small_url || null,
@@ -1246,9 +1406,66 @@ class MiDespensa {
             }
         }
 
-        status.textContent = 'No encontrado. Introduce datos manualmente.';
-        alert('No se encontró el producto en ninguna base de datos.');
-        this.closeScanModal();
+        // Si no lo encontró en ninguna API, crear uno nuevo basado en el código de barras
+        if (this.scanContext === 'catalog-add') {
+            const newProduct = {
+                name: `Producto ${barcode}`,
+                category: 'other',
+                barcode: barcode,
+                imageUrl: null
+            };
+            
+            // Agregar al catálogo
+            await this.addShoppingItem(newProduct.name, newProduct.category, null, '', {
+                barcode: barcode
+            }, false);
+            
+            this.playBeep();
+            status.textContent = 'Producto nuevo creado!';
+            this.closeScanModal();
+            this.showAddToInventoryModal(newProduct);
+        } else {
+            status.textContent = 'No encontrado. Introduce datos manualmente.';
+            alert('No se encontró el producto en ninguna base de datos.');
+            this.closeScanModal();
+        }
+    }
+
+    showAddToInventoryModal(productData) {
+        // Preparar los datos del producto para el formulario
+        const formData = {
+            name: productData.name,
+            category: productData.category || 'other',
+            barcode: productData.barcode || '',
+            location: this.mapCategoryToLocation(productData.category || 'other'),
+            quantity: 1,
+            unit: productData.unit || 'unidad',
+            expiryDate: '',
+            notes: productData.notes || (productData.brand ? `Marca: ${productData.brand}` : ''),
+            perishable: this.shouldBePerishable(productData.category || 'other'),
+            fromCatalog: true
+        };
+
+        this.showProductModal(formData);
+    }
+
+    mapCategoryToLocation(category) {
+        const mapping = {
+            dairy: 'fridge',
+            beverages: 'fridge',
+            produce: 'fridge',
+            meat: 'fridge',
+            frozen: 'freezer',
+            pantry: 'pantry',
+            drugstore: 'pantry',
+            other: 'pantry'
+        };
+        return mapping[category] || 'pantry';
+    }
+
+    shouldBePerishable(category) {
+        const perishableCategories = ['dairy', 'produce', 'meat', 'beverages', 'frozen'];
+        return perishableCategories.includes(category);
     }
 
     playErrorBeep() {
