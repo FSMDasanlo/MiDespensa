@@ -237,6 +237,15 @@ body {
     color: var(--gray-dark);
 }
 
+#shopping .section {
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+#shopping .section p {
+    margin-bottom: 0;
+}
+
 /* Dashboard */
 .dashboard-container {
     padding: 1rem 0;
@@ -887,6 +896,11 @@ body {
     display: flex;
     gap: 1rem;
     margin-bottom: 1rem;
+}
+
+#shopping .modal-buttons {
+    margin-bottom: 1rem;
+    margin-top: 0;
 }
 
 .modal-buttons button {
