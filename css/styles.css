@@ -705,6 +705,10 @@ body {
     padding: 1rem;
 }
 
+#scanModal, #imagePreviewModal {
+    z-index: 1100;
+}
+
 .modal-content {
     background: var(--white);
     border-radius: 16px;
