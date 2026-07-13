@@ -450,6 +450,41 @@ body {
     padding: 1rem;
 }
 
+.search-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    align-items: stretch;
+}
+
+.search-row .search-bar {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.icon-btn {
+    background: var(--primary);
+    color: var(--white);
+    border: none;
+    border-radius: 10px;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    transition: all 0.2s;
+}
+
+.icon-btn:hover {
+    background: var(--primary-dark);
+}
+
+.icon-btn:active {
+    transform: scale(0.95);
+}
+
 .search-bar {
     background: var(--white);
     display: flex;

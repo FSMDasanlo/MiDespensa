@@ -86,19 +86,23 @@
                         <div id="categoryBreakdown" class="category-grid">
                         </div>
                     </div>
-
-                    <button class="btn btn-primary btn-large" id="addProductBtn">
-                        <i class="fas fa-plus"></i> Agregar producto
-                    </button>
                 </div>
             </section>
 
             <!-- INVENTORY -->
             <section id="inventory" class="screen">
                 <div class="inventory-container">
-                    <div class="search-bar">
-                        <i class="fas fa-search"></i>
-                        <input type="text" id="searchInput" placeholder="Buscar productos...">
+                    <div class="search-row">
+                        <div class="search-bar">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="searchInput" placeholder="Buscar productos...">
+                        </div>
+                        <button class="icon-btn" id="scanBtn" title="Escanear producto">
+                            <i class="fas fa-barcode"></i>
+                        </button>
+                        <button class="icon-btn" id="voiceBtn" title="Meter por voz">
+                            <i class="fas fa-microphone"></i>
+                        </button>
                     </div>
 
                     <div class="filter-buttons">
@@ -113,6 +117,10 @@
                     <div id="inventoryList" class="product-list">
                         <p class="empty-state">No hay productos. ¡Agrega uno!</p>
                     </div>
+
+                    <button class="btn btn-primary btn-large add-product-sticky" id="addInventoryProductBtn">
+                        <i class="fas fa-plus"></i> Agregar producto
+                    </button>
                 </div>
             </section>
 

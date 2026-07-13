@@ -299,6 +299,13 @@ class MiDespensa {
                 .doc(this.currentLocationId)
                 .collection('products')
                 .add(product);
+            
+            // También lo añadimos al catálogo maestro (shoppingList) si no existe
+            this.addShoppingItem(product.name, product.category, null, product.notes, {
+                barcode: product.barcode,
+                unit: product.unit
+            }, false); // inCart = false para que no aparezca en el carrito automáticamente
+
             this.updateLocationTimestamp();
         } catch (error) {
             console.error('Error al añadir producto:', error);
@@ -750,8 +757,16 @@ class MiDespensa {
             // Verificar si el item ya existe en el catálogo para no duplicar
             const existing = this.shoppingList.find(i => i.name.toLowerCase() === name.trim().toLowerCase());
             if (existing) {
-                // Actualizar el item existente con la nueva información si viene de una búsqueda enriquecida
-                const updates = { inCart: inCart, completed: false };
+                // Si ya existe, actualizamos información pero respetamos inCart si es true
+                const updates = {};
+                
+                // Si venimos de "añadir al carrito", lo activamos. 
+                // Si venimos de "inventario" (inCart = false), no desactivamos lo que ya esté en el carrito.
+                if (inCart) {
+                    updates.inCart = true;
+                    updates.completed = false;
+                }
+                
                 if (metadata.barcode && !existing.barcode) updates.barcode = metadata.barcode;
                 if (imageUrl && !existing.imageUrl) updates.imageUrl = imageUrl;
                 if (metadata.brand || metadata.weight) {
@@ -1216,9 +1231,13 @@ class MiDespensa {
         });
 
         // Dashboard
-        document.getElementById('addProductBtn').addEventListener('click', () => this.showCatalogSearchModal());
+        // document.getElementById('addProductBtn').addEventListener('click', () => this.showCatalogSearchModal());
 
         // Inventory
+        document.getElementById('addInventoryProductBtn').addEventListener('click', () => this.showCatalogSearchModal());
+        document.getElementById('scanBtn')?.addEventListener('click', () => this.openScanModal('inventory'));
+        document.getElementById('voiceBtn')?.addEventListener('click', () => this.openVoiceModal());
+
         document.getElementById('searchInput').addEventListener('input', (e) => {
             const search = e.target.value;
             this.renderInventory(search);
