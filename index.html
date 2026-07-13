@@ -181,6 +181,9 @@
                             <button type="button" class="btn btn-secondary btn-small" id="scanCatalogBtn">
                                 <i class="fas fa-camera"></i> Escanear
                             </button>
+                            <button type="button" class="btn btn-secondary btn-small" id="voiceInputBtn" title="Añadir por voz">
+                                <i class="fas fa-microphone"></i>
+                            </button>
                         </div>
                     </div>
 
@@ -433,6 +436,67 @@
                     <div class="app-info">
                         <p><strong>Home Status v1.0</strong></p>
                         <p>Controla tu hogar fácilmente 🏠</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Entrada por voz -->
+        <div id="voiceModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2><i class="fas fa-microphone" style="color: var(--primary);"></i> Añadir por voz</h2>
+                    <button class="close-btn" id="closeVoiceModalBtn">&times;</button>
+                </div>
+                <div class="form">
+                    <!-- Selector destino -->
+                    <div class="voice-destination">
+                        <span class="voice-dest-label">Guardar en:</span>
+                        <div class="voice-dest-toggle">
+                            <button class="voice-dest-btn active" data-dest="inventory">🏠 Inventario</button>
+                            <button class="voice-dest-btn" data-dest="catalog">📚 Catálogo</button>
+                        </div>
+                    </div>
+
+                    <!-- Botón micrófono -->
+                    <div class="voice-mic-container">
+                        <button id="voiceMicBtn" class="voice-mic-btn" title="Pulsa para hablar">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                        <p id="voiceStatus" class="voice-status-text">Pulsa el micrófono y di los productos</p>
+                        <p id="voiceInterim" class="voice-interim"></p>
+                    </div>
+
+                    <!-- Instrucción rápida -->
+                    <p class="voice-hint">
+                        <i class="fas fa-info-circle"></i>
+                        Di: <em>"Leche dos, pan tres, huevos seis"</em> — separa productos con comas
+                    </p>
+
+                    <!-- Tabla de productos reconocidos -->
+                    <div class="voice-table-wrapper">
+                        <table class="voice-table">
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th style="width:90px;">Cantidad</th>
+                                    <th style="width:44px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="voiceTableBody">
+                                <tr id="voiceEmptyRow">
+                                    <td colspan="3" class="voice-empty-cell">Aún no hay productos...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Botones de acción -->
+                    <div class="modal-buttons" style="margin-top:1rem;">
+                        <button type="button" class="btn btn-secondary" id="cancelVoiceBtn">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="saveVoiceBtn" disabled>
+                            <i class="fas fa-save"></i> Guardar
+                        </button>
                     </div>
                 </div>
             </div>

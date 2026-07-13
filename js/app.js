@@ -45,6 +45,10 @@ class MiDespensa {
         this.db = null;
         this.scanContext = 'inventory'; // 'inventory' o 'catalog'
         this.hasInteracted = false;
+        this.voiceItems = [];
+        this.voiceRecognition = null;
+        this.voiceDestination = 'inventory';
+        this.voiceIsListening = false;
         this.init();
     }
 
@@ -872,6 +876,339 @@ class MiDespensa {
     }
 
     // ============ SETUP EVENT LISTENERS ============
+
+    // ============ VOICE INPUT ============
+    openVoiceModal() {
+        this.voiceItems = [];
+        this.voiceDestination = 'inventory';
+        this.voiceIsListening = false;
+
+        // Reset UI
+        const modal = document.getElementById('voiceModal');
+        document.getElementById('voiceStatus').textContent = 'Pulsa el micrófono y di los productos';
+        document.getElementById('voiceStatus').classList.remove('listening');
+        document.getElementById('voiceInterim').textContent = '';
+        document.getElementById('saveVoiceBtn').disabled = true;
+        const micBtn = document.getElementById('voiceMicBtn');
+        micBtn.classList.remove('listening');
+        micBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+
+        // Reset destino toggle
+        document.querySelectorAll('.voice-dest-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.dest === 'inventory');
+        });
+
+        this.renderVoiceTable();
+        modal.classList.add('active');
+    }
+
+    closeVoiceModal() {
+        this.stopVoiceRecognition();
+        document.getElementById('voiceModal').classList.remove('active');
+        this.voiceItems = [];
+    }
+
+    startVoiceRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert('Tu navegador no soporta reconocimiento de voz. Prueba con Chrome.');
+            return;
+        }
+
+        if (this.voiceIsListening) {
+            this.stopVoiceRecognition();
+            return;
+        }
+
+        this.voiceRecognition = new SpeechRecognition();
+        this.voiceRecognition.lang = 'es-ES';
+        this.voiceRecognition.continuous = true;
+        this.voiceRecognition.interimResults = true;
+
+        this.voiceRecognition.onstart = () => {
+            this.voiceIsListening = true;
+            const micBtn = document.getElementById('voiceMicBtn');
+            micBtn.classList.add('listening');
+            micBtn.innerHTML = '<i class="fas fa-stop"></i>';
+            const status = document.getElementById('voiceStatus');
+            status.textContent = 'Escuchando... Di los productos';
+            status.classList.add('listening');
+        };
+
+        this.voiceRecognition.onresult = (event) => {
+            let interim = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    const parsed = this.parseVoiceInput(transcript);
+                    parsed.forEach(item => {
+                        // Evitar duplicados exactos consecutivos
+                        const last = this.voiceItems[this.voiceItems.length - 1];
+                        if (!last || last.name.toLowerCase() !== item.name.toLowerCase()) {
+                            this.voiceItems.push(item);
+                        }
+                    });
+                    this.renderVoiceTable();
+                    document.getElementById('voiceInterim').textContent = '';
+                    document.getElementById('saveVoiceBtn').disabled = this.voiceItems.length === 0;
+                } else {
+                    interim += transcript;
+                }
+            }
+            document.getElementById('voiceInterim').textContent = interim;
+        };
+
+        this.voiceRecognition.onerror = (event) => {
+            if (event.error !== 'aborted') {
+                console.warn('Voice recognition error:', event.error);
+                document.getElementById('voiceStatus').textContent = 'Error: ' + event.error;
+            }
+            this.stopVoiceRecognition();
+        };
+
+        this.voiceRecognition.onend = () => {
+            if (this.voiceIsListening) {
+                // Reiniciar si se cortó sola (modo continuo)
+                try { this.voiceRecognition.start(); } catch(e) {}
+            }
+        };
+
+        this.voiceRecognition.start();
+    }
+
+    stopVoiceRecognition() {
+        this.voiceIsListening = false;
+        if (this.voiceRecognition) {
+            try { this.voiceRecognition.stop(); } catch(e) {}
+            this.voiceRecognition = null;
+        }
+        const micBtn = document.getElementById('voiceMicBtn');
+        if (micBtn) {
+            micBtn.classList.remove('listening');
+            micBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+        }
+        const status = document.getElementById('voiceStatus');
+        if (status) {
+            status.classList.remove('listening');
+            status.textContent = this.voiceItems.length > 0
+                ? 'Revisa la lista y pulsa Guardar'
+                : 'Pulsa el micrófono y di los productos';
+        }
+        const interim = document.getElementById('voiceInterim');
+        if (interim) interim.textContent = '';
+    }
+
+    parseVoiceInput(text) {
+        const numberWords = {
+            'cero': 0, 'un': 1, 'uno': 1, 'una': 1, 'dos': 2, 'tres': 3,
+            'cuatro': 4, 'cinco': 5, 'seis': 6, 'siete': 7, 'ocho': 8,
+            'nueve': 9, 'diez': 10, 'once': 11, 'doce': 12, 'trece': 13,
+            'catorce': 14, 'quince': 15, 'dieciséis': 16, 'dieciseis': 16,
+            'diecisiete': 17, 'dieciocho': 18, 'diecinueve': 19,
+            'veinte': 20, 'veintiuno': 21, 'veintidós': 22, 'veintidos': 22,
+            'veintitrés': 23, 'veintitres': 23, 'veinticuatro': 24,
+            'veinticinco': 25, 'treinta': 30, 'cuarenta': 40, 'cincuenta': 50,
+            'media': 0.5, 'medio': 0.5
+        };
+        const stopWords = new Set(['de', 'del', 'la', 'el', 'las', 'los', 'unos', 'unas', 'e', 'a', 'con']);
+
+        // Normalizar: minúsculas, quitar puntuación final
+        // Tratar la palabra "coma" (spoken comma) como separador
+        const clean = text.toLowerCase()
+            .replace(/[.!?]/g, '')
+            .replace(/\bcoma\b/g, ',')
+            .trim();
+
+        // Si hay separadores explícitos (comas/punto y coma) → split y parsear cada segmento
+        if (/[,;]/.test(clean)) {
+            return clean.split(/[,;]/)
+                .map(s => s.trim()).filter(Boolean)
+                .map(seg => this._voiceParseSegment(seg, numberWords, stopWords))
+                .filter(Boolean);
+        }
+
+        // Sin separadores → detectar límites producto/cantidad por tokens
+        return this._voiceParseByBoundaries(clean, numberWords, stopWords);
+    }
+
+    // Parsea un segmento único: todos los no-números = nombre, número = cantidad
+    _voiceParseSegment(text, numberWords, stopWords) {
+        const words = text.trim().split(/\s+/).filter(Boolean);
+        let qty = 1;
+        const nameWords = [];
+        for (const w of words) {
+            const n = parseFloat(w);
+            if (!isNaN(n)) { qty = n; continue; }
+            if (numberWords[w] !== undefined) { qty = numberWords[w]; continue; }
+            if (stopWords.has(w) && nameWords.length === 0) continue; // stop words iniciales
+            nameWords.push(w);
+        }
+        while (nameWords.length && stopWords.has(nameWords[0])) nameWords.shift();
+        while (nameWords.length && stopWords.has(nameWords[nameWords.length - 1])) nameWords.pop();
+        const name = nameWords.join(' ').trim();
+        if (!name) return null;
+        return { name: name[0].toUpperCase() + name.slice(1), quantity: qty > 0 ? qty : 1 };
+    }
+
+    // Detecta productos usando los números como separadores de frontera
+    // "leche 2 pan 3 huevos 6"  →  [{leche,2}, {pan,3}, {huevos,6}]
+    // "2 leche 3 pan"           →  [{leche,2}, {pan,3}]
+    // "leche pan sal"           →  [{leche,1}, {pan,1}, {sal,1}]  (cada palabra = producto)
+    _voiceParseByBoundaries(text, numberWords, stopWords) {
+        const tokens = text.split(/\s+/).filter(Boolean);
+        const items = [];
+        let nameWords = [];
+        let qty = null;
+        let qtySet = false;
+        let leadingQty = null;
+
+        const flush = () => {
+            while (nameWords.length && stopWords.has(nameWords[0])) nameWords.shift();
+            while (nameWords.length && stopWords.has(nameWords[nameWords.length - 1])) nameWords.pop();
+            const name = nameWords.join(' ').trim();
+            if (name) {
+                items.push({ name: name[0].toUpperCase() + name.slice(1), quantity: qty !== null ? qty : 1 });
+            }
+            nameWords = []; qty = null; qtySet = false;
+        };
+
+        for (const tok of tokens) {
+            const n = parseFloat(tok);
+            const isNum = !isNaN(n) || numberWords[tok] !== undefined;
+            const tokNum = isNum ? (!isNaN(n) ? n : numberWords[tok]) : null;
+
+            if (isNum) {
+                if (qtySet) {
+                    // Ya tenemos nombre+cantidad → guardar y empezar nuevo con este número
+                    flush();
+                    leadingQty = tokNum;
+                } else if (nameWords.length > 0) {
+                    // Nombre en construcción, llega la cantidad
+                    qty = tokNum; qtySet = true;
+                } else {
+                    // Número antes de cualquier palabra (cantidad líder)
+                    leadingQty = tokNum;
+                }
+            } else {
+                // Token de texto
+                if (qtySet) {
+                    // Producto completo → nueva palabra arranca nuevo producto
+                    flush();
+                    nameWords.push(tok);
+                    if (leadingQty !== null) { qty = leadingQty; qtySet = true; leadingQty = null; }
+                } else if (leadingQty !== null && nameWords.length === 0) {
+                    // Palabra que sigue a un número líder
+                    nameWords.push(tok); qty = leadingQty; qtySet = true; leadingQty = null;
+                } else {
+                    // Caso: palabras sin números entre ellas
+                    // Solo flush si la última palabra del buffer NO es stop word
+                    // (las stop words actúan como conector: "aceite DE oliva" = 1 producto)
+                    if (nameWords.length > 0 && !stopWords.has(tok)) {
+                        const lastWord = nameWords[nameWords.length - 1];
+                        if (!stopWords.has(lastWord)) {
+                            flush();
+                        }
+                    }
+                    nameWords.push(tok);
+                }
+            }
+        }
+        flush();
+        return items;
+    }
+
+    renderVoiceTable() {
+        const tbody = document.getElementById('voiceTableBody');
+        if (!tbody) return;
+
+        if (this.voiceItems.length === 0) {
+            tbody.innerHTML = `<tr id="voiceEmptyRow"><td colspan="3" class="voice-empty-cell">Aún no hay productos...</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = this.voiceItems.map((item, i) => `
+            <tr>
+                <td>
+                    <input type="text"
+                        value="${this.escapeHtml(item.name)}"
+                        oninput="app.updateVoiceItem(${i}, 'name', this.value)"
+                        placeholder="Producto">
+                </td>
+                <td>
+                    <input type="number"
+                        class="qty-input"
+                        value="${item.quantity}"
+                        min="0.1" step="0.1"
+                        oninput="app.updateVoiceItem(${i}, 'quantity', this.value)">
+                </td>
+                <td>
+                    <button class="voice-row-del" onclick="app.removeVoiceItem(${i})" title="Eliminar">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    updateVoiceItem(index, field, value) {
+        if (!this.voiceItems[index]) return;
+        if (field === 'quantity') {
+            this.voiceItems[index].quantity = parseFloat(value) || 1;
+        } else {
+            this.voiceItems[index].name = value;
+        }
+        document.getElementById('saveVoiceBtn').disabled = this.voiceItems.length === 0;
+    }
+
+    removeVoiceItem(index) {
+        this.voiceItems.splice(index, 1);
+        this.renderVoiceTable();
+        document.getElementById('saveVoiceBtn').disabled = this.voiceItems.length === 0;
+    }
+
+    async saveVoiceItems() {
+        if (this.voiceItems.length === 0) return;
+
+        this.stopVoiceRecognition();
+
+        const validItems = this.voiceItems.filter(i => i.name.trim());
+        if (validItems.length === 0) return;
+
+        const dest = this.voiceDestination;
+        let saved = 0;
+
+        for (const item of validItems) {
+            if (dest === 'catalog') {
+                await this.addShoppingItem(item.name.trim(), 'pantry', null, '', {}, false);
+            } else {
+                // Inventario: despensa, no perecedero
+                await this.addProduct({
+                    name: item.name.trim(),
+                    category: 'pantry',
+                    location: 'pantry',
+                    quantity: item.quantity,
+                    unit: 'unidad',
+                    expiryDate: null,
+                    notes: '',
+                    perishable: false,
+                    barcode: ''
+                });
+            }
+            saved++;
+        }
+
+        this.closeVoiceModal();
+        this.speak(`${saved} producto${saved !== 1 ? 's' : ''} guardado${saved !== 1 ? 's' : ''} correctamente.`);
+    }
+
+    escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
     setupEventListeners() {
         // Tab Navigation
         document.querySelectorAll('.nav-tab').forEach(btn => {
@@ -908,6 +1245,7 @@ class MiDespensa {
             if (e.key === 'Enter') this.addNewCatalogItem();
         });
         document.getElementById('scanCatalogBtn')?.addEventListener('click', () => this.openScanModal('catalog'));
+        document.getElementById('voiceInputBtn')?.addEventListener('click', () => this.openVoiceModal());
         document.getElementById('catalogSearchInput')?.addEventListener('input', () => {
             this.renderCatalog();
         });
@@ -998,6 +1336,22 @@ class MiDespensa {
         });
         document.getElementById('locationModal').addEventListener('click', (e) => {
             if (e.target.id === 'locationModal') this.closeLocationModal();
+        });
+
+        // Voice Modal
+        document.getElementById('closeVoiceModalBtn')?.addEventListener('click', () => this.closeVoiceModal());
+        document.getElementById('cancelVoiceBtn')?.addEventListener('click', () => this.closeVoiceModal());
+        document.getElementById('saveVoiceBtn')?.addEventListener('click', () => this.saveVoiceItems());
+        document.getElementById('voiceMicBtn')?.addEventListener('click', () => this.startVoiceRecognition());
+        document.querySelectorAll('.voice-dest-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.voice-dest-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.voiceDestination = btn.dataset.dest;
+            });
+        });
+        document.getElementById('voiceModal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'voiceModal') this.closeVoiceModal();
         });
         
         // Image Preview Modal
