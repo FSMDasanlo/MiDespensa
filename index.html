@@ -103,6 +103,9 @@
                         <button class="icon-btn" id="voiceBtn" title="Meter por voz">
                             <i class="fas fa-microphone"></i>
                         </button>
+                        <button class="icon-btn" id="addInventoryProductBtn" title="Agregar producto">
+                            <i class="fas fa-plus"></i>
+                        </button>
                     </div>
 
                     <div class="filter-buttons">
@@ -117,10 +120,6 @@
                     <div id="inventoryList" class="product-list">
                         <p class="empty-state">No hay productos. ¡Agrega uno!</p>
                     </div>
-
-                    <button class="btn btn-primary btn-large add-product-sticky" id="addInventoryProductBtn">
-                        <i class="fas fa-plus"></i> Agregar producto
-                    </button>
                 </div>
             </section>
 
@@ -510,6 +509,55 @@
             </div>
         </div>
 
+        <!-- MODAL: Reconocer productos por foto -->
+        <div id="photoModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2><i class="fas fa-camera-retro" style="color: var(--primary);"></i> Añadir por foto</h2>
+                    <button class="close-btn" id="closePhotoModalBtn">&times;</button>
+                </div>
+                <div class="form">
+                    <input type="file" id="photoFileInput" accept="image/*" style="display:none;">
+                    <div class="form-group">
+                        <label for="photoLocation">Guardar en:</label>
+                        <select id="photoLocation">
+                            <option value="fridge">🧊 Frigo</option>
+                            <option value="freezer">❄️ Congelador</option>
+                            <option value="pantry">🍞 Despensa</option>
+                            <option value="other">📍 Otro</option>
+                        </select>
+                    </div>
+                    <button type="button" class="btn btn-secondary" id="photoPickBtn" style="width:100%;">
+                        <i class="fas fa-image"></i> Elegir foto
+                    </button>
+                    <img id="photoPreview" alt="" style="display:none; width:100%; max-height:200px; object-fit:contain; margin-top:0.75rem; border-radius:10px;">
+                    <p id="photoStatus" class="voice-status-text" style="text-align:center;">Elige una foto de la nevera o la despensa</p>
+
+                    <div class="voice-table-wrapper">
+                        <table class="voice-table">
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th style="width:90px;">Cantidad</th>
+                                    <th style="width:44px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="photoTableBody">
+                                <tr><td colspan="3" class="voice-empty-cell">Aún no hay productos...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="modal-buttons" style="margin-top:1rem;">
+                        <button type="button" class="btn btn-secondary" id="cancelPhotoBtn">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="savePhotoBtn" disabled>
+                            <i class="fas fa-save"></i> Guardar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- MODAL: Búsqueda en Catálogo para Agregar Producto -->
         <div id="catalogSearchModal" class="modal">
             <div class="modal-content">
@@ -521,8 +569,11 @@
                 <div class="form">
                     <div class="modal-buttons" style="margin-bottom: 1.5rem; margin-top: 0;">
                         <button type="button" class="btn btn-secondary" id="cancelCatalogSearchBtn">Cancelar</button>
-                        <button type="button" class="btn btn-secondary" id="scanFromAddBtn" style="background-color: #4CAF50; border-color: #4CAF50;">
-                            <i class="fas fa-camera"></i> Escanear
+                        <button type="button" class="btn btn-secondary" id="scanFromAddBtn" style="background-color: #4CAF50; border-color: #4CAF50; flex: 0 0 auto; padding-left: 0.8rem; padding-right: 0.8rem;">
+                            <i class="fas fa-barcode"></i> Escanear
+                        </button>
+                        <button type="button" class="icon-btn" id="photoProductBtn" title="Foto de nevera/despensa">
+                            <i class="fas fa-camera-retro"></i>
                         </button>
                     </div>
 
@@ -554,6 +605,7 @@
     <script src="https://unpkg.com/jsqr@1.4.1/dist/jsQR.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.21.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.21.0/firebase-firestore-compat.js"></script>
+    <script src="js/config.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/app.js"></script>
 </body>

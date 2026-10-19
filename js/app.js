@@ -1216,6 +1216,159 @@ class MiDespensa {
         this.speak(`${saved} producto${saved !== 1 ? 's' : ''} guardado${saved !== 1 ? 's' : ''} correctamente.`);
     }
 
+    // ============ PHOTO RECOGNITION (Groq vision) ============
+    openPhotoModal() {
+        this.photoItems = [];
+        document.getElementById('photoPreview').style.display = 'none';
+        document.getElementById('photoStatus').textContent = 'Elige una foto de la nevera o la despensa';
+        document.getElementById('photoFileInput').value = '';
+        this.renderPhotoTable();
+        document.getElementById('photoModal').classList.add('active');
+    }
+
+    closePhotoModal() {
+        document.getElementById('photoModal').classList.remove('active');
+        this.photoItems = [];
+    }
+
+    // Reduce la imagen para respetar el límite de tamaño de la API
+    resizeImageToDataUrl(file, maxSide = 1280) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+            img.onload = () => {
+                const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(img.width * scale);
+                canvas.height = Math.round(img.height * scale);
+                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                URL.revokeObjectURL(url);
+                resolve(canvas.toDataURL('image/jpeg', 0.85));
+            };
+            img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')); };
+            img.src = url;
+        });
+    }
+
+    async handlePhotoSelected(file) {
+        if (!file) return;
+        const status = document.getElementById('photoStatus');
+        const apiKey = window.APP_CONFIG?.groqApiKey;
+        if (!apiKey) {
+            status.textContent = 'Falta la clave de Groq (js/config.js).';
+            return;
+        }
+
+        try {
+            status.textContent = 'Analizando foto con IA...';
+            const dataUrl = await this.resizeImageToDataUrl(file);
+            const preview = document.getElementById('photoPreview');
+            preview.src = dataUrl;
+            preview.style.display = 'block';
+
+            const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+                    temperature: 0.1,
+                    response_format: { type: 'json_object' },
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            {
+                                type: 'text',
+                                text: 'Identifica los productos de alimentación y hogar visibles en esta foto (nevera o despensa). Agrupa los repetidos y cuenta las unidades. Responde solo con JSON: {"items":[{"name":"nombre en español","quantity":número}]}. Si no ves productos, devuelve {"items":[]}.'
+                            },
+                            { type: 'image_url', image_url: { url: dataUrl } }
+                        ]
+                    }]
+                })
+            });
+
+            if (!res.ok) {
+                const detail = await res.text();
+                throw new Error(`Error ${res.status}: ${detail.slice(0, 150)}`);
+            }
+
+            const data = await res.json();
+            const parsed = JSON.parse(data.choices[0].message.content);
+            this.photoItems = (parsed.items || [])
+                .filter(i => i && i.name)
+                .map(i => ({ name: String(i.name), quantity: parseFloat(i.quantity) || 1 }));
+
+            status.textContent = this.photoItems.length
+                ? `${this.photoItems.length} productos reconocidos. Revisa y guarda.`
+                : 'No se reconoció ningún producto.';
+            this.renderPhotoTable();
+        } catch (err) {
+            console.error(err);
+            status.textContent = `No se pudo analizar la foto. ${err.message}`;
+        }
+    }
+
+    renderPhotoTable() {
+        const tbody = document.getElementById('photoTableBody');
+        if (!tbody) return;
+        document.getElementById('savePhotoBtn').disabled = this.photoItems.length === 0;
+
+        if (this.photoItems.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="3" class="voice-empty-cell">Aún no hay productos...</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = this.photoItems.map((item, i) => `
+            <tr>
+                <td><input type="text" value="${this.escapeHtml(item.name)}"
+                    oninput="app.updatePhotoItem(${i}, 'name', this.value)" placeholder="Producto"></td>
+                <td><input type="number" class="qty-input" value="${item.quantity}" min="0.1" step="0.1"
+                    oninput="app.updatePhotoItem(${i}, 'quantity', this.value)"></td>
+                <td><button class="voice-row-del" onclick="app.removePhotoItem(${i})" title="Eliminar">
+                    <i class="fas fa-trash-alt"></i></button></td>
+            </tr>
+        `).join('');
+    }
+
+    updatePhotoItem(index, field, value) {
+        if (!this.photoItems[index]) return;
+        if (field === 'quantity') {
+            this.photoItems[index].quantity = parseFloat(value) || 1;
+        } else {
+            this.photoItems[index].name = value;
+        }
+    }
+
+    removePhotoItem(index) {
+        this.photoItems.splice(index, 1);
+        this.renderPhotoTable();
+    }
+
+    async savePhotoItems() {
+        const validItems = this.photoItems.filter(i => i.name.trim());
+        if (validItems.length === 0) return;
+
+        const location = document.getElementById('photoLocation').value;
+        for (const item of validItems) {
+            await this.addProduct({
+                name: item.name.trim(),
+                category: 'pantry',
+                location,
+                quantity: item.quantity,
+                unit: 'unidad',
+                expiryDate: null,
+                notes: '',
+                perishable: false,
+                barcode: ''
+            });
+        }
+
+        this.closePhotoModal();
+        this.speak(`${validItems.length} producto${validItems.length !== 1 ? 's' : ''} guardado${validItems.length !== 1 ? 's' : ''} correctamente.`);
+    }
+
     escapeHtml(str) {
         return String(str)
             .replace(/&/g, '&amp;')
@@ -1237,6 +1390,17 @@ class MiDespensa {
         document.getElementById('addInventoryProductBtn').addEventListener('click', () => this.showCatalogSearchModal());
         document.getElementById('scanBtn')?.addEventListener('click', () => this.openScanModal('inventory'));
         document.getElementById('voiceBtn')?.addEventListener('click', () => this.openVoiceModal());
+
+        // Photo recognition
+        document.getElementById('photoProductBtn')?.addEventListener('click', () => {
+            this.closeCatalogSearchModal();
+            this.openPhotoModal();
+        });
+        document.getElementById('photoPickBtn')?.addEventListener('click', () => document.getElementById('photoFileInput').click());
+        document.getElementById('photoFileInput')?.addEventListener('change', (e) => this.handlePhotoSelected(e.target.files[0]));
+        document.getElementById('closePhotoModalBtn')?.addEventListener('click', () => this.closePhotoModal());
+        document.getElementById('cancelPhotoBtn')?.addEventListener('click', () => this.closePhotoModal());
+        document.getElementById('savePhotoBtn')?.addEventListener('click', () => this.savePhotoItems());
 
         document.getElementById('searchInput').addEventListener('input', (e) => {
             const search = e.target.value;
