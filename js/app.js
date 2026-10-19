@@ -1,4 +1,4 @@
-// ============ FIRESTORE STRUCTURE ============
+﻿// ============ FIRESTORE STRUCTURE ============
 // locations/{locationId}
 //   - id: string
 //   - name: string
@@ -1250,55 +1250,85 @@ class MiDespensa {
         });
     }
 
+    static PHOTO_PROMPT = 'Eres un asistente que hace el inventario de una nevera o despensa a partir de una foto. Lista SOLO los productos que se ven con claridad en la imagen; no inventes ni supongas productos que no se ven. Cada producto distinto aparece UNA sola vez en la lista: si hay varias unidades iguales, pon una sola entrada con la cantidad total contada. Usa nombres cortos y genéricos en español (ej. "leche", "yogur", "tomate"). Máximo 30 entradas. Responde únicamente con JSON: {"items":[{"name":"nombre","quantity":número entero}]}. Si no ves productos, devuelve {"items":[]}.';
+
+    async analyzePhotoWithGemini(dataUrl, apiKey) {
+        const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [
+                        { text: MiDespensa.PHOTO_PROMPT },
+                        { inline_data: { mime_type: 'image/jpeg', data: dataUrl.split(',')[1] } }
+                    ]
+                }],
+                generationConfig: { temperature: 0.2, responseMimeType: 'application/json' }
+            })
+        });
+        if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 150)}`);
+        const data = await res.json();
+        return data.candidates[0].content.parts.map(p => p.text || '').join('');
+    }
+
+    async analyzePhotoWithGroq(dataUrl, apiKey) {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+            body: JSON.stringify({
+                model: 'qwen/qwen3.8-27b',
+                temperature: 0.2,
+                frequency_penalty: 0.5,
+                max_tokens: 1500,
+                response_format: { type: 'json_object' },
+                messages: [{
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: MiDespensa.PHOTO_PROMPT },
+                        { type: 'image_url', image_url: { url: dataUrl } }
+                    ]
+                }]
+            })
+        });
+        if (!res.ok) throw new Error(`Groq ${res.status}: ${(await res.text()).slice(0, 150)}`);
+        const data = await res.json();
+        return data.choices[0].message.content;
+    }
+
     async handlePhotoSelected(file) {
         if (!file) return;
         const status = document.getElementById('photoStatus');
-        const apiKey = window.APP_CONFIG?.groqApiKey;
-        if (!apiKey) {
-            status.textContent = 'Falta la clave de Groq (js/config.js).';
+        const realKey = k => (k && !k.startsWith('TU_')) ? k : '';
+        const geminiKey = realKey(window.APP_CONFIG?.geminiApiKey);
+        const groqKey = realKey(window.APP_CONFIG?.groqApiKey);
+        if (!geminiKey && !groqKey) {
+            status.textContent = 'Falta la clave de Gemini o Groq (js/config.js).';
             return;
         }
 
         try {
-            status.textContent = 'Analizando foto con IA...';
+            status.textContent = `Analizando foto con ${geminiKey ? 'Gemini' : 'Groq'}...`;
             const dataUrl = await this.resizeImageToDataUrl(file);
             const preview = document.getElementById('photoPreview');
             preview.src = dataUrl;
             preview.style.display = 'block';
 
-            const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`
-                },
-                body: JSON.stringify({
-                    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-                    temperature: 0.1,
-                    response_format: { type: 'json_object' },
-                    messages: [{
-                        role: 'user',
-                        content: [
-                            {
-                                type: 'text',
-                                text: 'Identifica los productos de alimentación y hogar visibles en esta foto (nevera o despensa). Agrupa los repetidos y cuenta las unidades. Responde solo con JSON: {"items":[{"name":"nombre en español","quantity":número}]}. Si no ves productos, devuelve {"items":[]}.'
-                            },
-                            { type: 'image_url', image_url: { url: dataUrl } }
-                        ]
-                    }]
-                })
-            });
-
-            if (!res.ok) {
-                const detail = await res.text();
-                throw new Error(`Error ${res.status}: ${detail.slice(0, 150)}`);
+            const content = geminiKey
+                ? await this.analyzePhotoWithGemini(dataUrl, geminiKey)
+                : await this.analyzePhotoWithGroq(dataUrl, groqKey);
+            const parsed = JSON.parse(content.replace(/<think>[\s\S]*?<\/think>/g, '').trim());
+            // El modelo a veces repite entradas: se fusionan por nombre normalizado
+            const merged = new Map();
+            for (const i of (parsed.items || [])) {
+                if (!i || !i.name) continue;
+                const key = String(i.name).trim().toLowerCase();
+                if (!key) continue;
+                const qty = parseFloat(i.quantity) || 1;
+                const prev = merged.get(key);
+                if (prev) prev.quantity = Math.max(prev.quantity, qty);
+                else merged.set(key, { name: String(i.name).trim(), quantity: qty });
             }
-
-            const data = await res.json();
-            const parsed = JSON.parse(data.choices[0].message.content);
-            this.photoItems = (parsed.items || [])
-                .filter(i => i && i.name)
-                .map(i => ({ name: String(i.name), quantity: parseFloat(i.quantity) || 1 }));
+            this.photoItems = [...merged.values()].slice(0, 30);
 
             status.textContent = this.photoItems.length
                 ? `${this.photoItems.length} productos reconocidos. Revisa y guarda.`
